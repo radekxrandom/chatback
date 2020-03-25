@@ -24,8 +24,10 @@ app.use(express.static(path.join(__dirname, "public")));
 app.use("/api", apiRouter);
 
 var mongoose = require("mongoose");
-var mongoDB =
+var mongo =
   "mongodb+srv://getpies:pervmoj123@cluster0-wdadp.mongodb.net/now?retryWrites=true&w=majority";
+
+var mongoDB = process.env.MONGODB_URI || mongo;
 mongoose.connect(mongoDB, {
   useNewUrlParser: true
 });
@@ -55,8 +57,8 @@ io.on("connection", socket => {
   socket.on("message", msg => {
     msg.type = "inmes";
     console.log(msg);
-    socket.emit("broad", msg);
-    socket.broadcast.emit("broad", msg);
+    socket.emit("message", msg);
+    socket.broadcast.emit("message", msg);
   });
 
   socket.on("username", username => {
