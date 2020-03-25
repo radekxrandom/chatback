@@ -47,9 +47,11 @@ app.use(function(req, res, next) {
   next();
 });
 
+var users = [];
+
 io.on("connection", socket => {
   console.log("a user connected");
-
+  io.to(`${socket.id}`).emit("hey", users);
   socket.on("disconnect", () => {
     console.log("User Disconnected");
   });
@@ -62,6 +64,7 @@ io.on("connection", socket => {
   });
 
   socket.on("username", username => {
+    users.push(username);
     console.log(`${username} has connected`);
     socket.emit("userconnected", username);
     socket.broadcast.emit("userconnected", username);
