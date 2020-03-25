@@ -53,6 +53,11 @@ io.on("connection", socket => {
   console.log("a user connected");
   io.to(`${socket.id}`).emit("hey", users);
   socket.on("disconnect", () => {
+    users.filter(us => {
+      if (thisuser != us) {
+        return us;
+      }
+    });
     console.log("User Disconnected");
   });
 
@@ -64,6 +69,7 @@ io.on("connection", socket => {
   });
 
   socket.on("username", username => {
+    var thisuser = username;
     users.push(username);
     console.log(`${username} has connected`);
     socket.emit("userconnected", username);
