@@ -50,15 +50,16 @@ app.use(function(req, res, next) {
 var users = [];
 
 io.on("connection", socket => {
-  console.log("a user connected");
+  console.log(`a user ${socket.id} connected`);
   io.to(`${socket.id}`).emit("hey", users);
-  socket.on("disconnect", () => {
-    users.filter(us => {
-      if (thisuser != us) {
-        return us;
-      }
-    });
-    console.log("User Disconnected");
+  console.log(users);
+
+  socket.on("username", user => {
+    const this_user = user;
+    users.push(user);
+    console.log(`${user.name} has connected`);
+    socket.emit("userconnected", users);
+    socket.broadcast.emit("userconnected", users);
   });
 
   socket.on("message", msg => {
@@ -68,12 +69,12 @@ io.on("connection", socket => {
     socket.broadcast.emit("message", msg);
   });
 
-  socket.on("username", username => {
-    var thisuser = username;
-    users.push(username);
-    console.log(`${username} has connected`);
-    socket.emit("userconnected", username);
-    socket.broadcast.emit("userconnected", username);
+  socket.on("disconnect", () => {
+    let newarr = users.filter(usr => usr.id != socket.id);
+    users = newarr;
+    socket.emit("userconnected", users);
+    socket.broadcast.emit("userconnected", users);
+    console.log(`User ${socket.id} Disconnected`);
   });
 });
 
