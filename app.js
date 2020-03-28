@@ -48,33 +48,70 @@ app.use(function(req, res, next) {
 });
 
 var users = [];
+var rooms = [];
+var messages = [];
 
 io.on("connection", socket => {
   console.log(`a user ${socket.id} connected`);
-  io.to(`${socket.id}`).emit("hey", users);
+  //io.to(`${socket.id}`).emit("hey", users);
   console.log(users);
-
+  //users.socket.room = [];
   socket.on("username", user => {
-    const this_user = user;
+    var this_user = user;
+    user.room = socket.room;
     users.push(user);
     console.log(`${user.name} has connected`);
-    socket.emit("userconnected", users);
-    socket.broadcast.emit("userconnected", users);
+    let usersInThisRoom = users.filter(usr => usr.room === socket.room);
+    if ((socket.room = "public")) {
+      for (let i = 0; i < messages.length; i++) {
+        socket.emit("message", messages[i]);
+      }
+    }
+    socket.emit("userconnected", usersInThisRoom);
+    socket.broadcast.to(socket.room).emit("userconnected", usersInThisRoom);
   });
 
   socket.on("message", msg => {
     msg.type = "inmes";
     console.log(msg);
     socket.emit("message", msg);
-    socket.broadcast.emit("message", msg);
+    if (socket.room === "public") {
+      if (messages.length < 10) {
+        messages.push(msg);
+      } else {
+        messages.shift;
+        messages.push(msg);
+      }
+    }
+    socket.broadcast.to(socket.room).emit("message", msg);
   });
 
   socket.on("disconnect", () => {
     let newarr = users.filter(usr => usr.id != socket.id);
     users = newarr;
-    socket.emit("userconnected", users);
-    socket.broadcast.emit("userconnected", users);
+    let usersInThisRoom = users.filter(usr => usr.room === socket.room);
+    socket.emit("userconnected", usersInThisRoom);
+    socket.broadcast.to(socket.room).emit("userconnected", usersInThisRoom);
     console.log(`User ${socket.id} Disconnected`);
+  });
+
+  socket.on("switchRoom", newroom => {
+    // leave the current room (stored in session)
+    socket.leave(socket.room);
+    // join new room, received as function parameter
+    socket.join(newroom);
+
+    socket.emit("updatechat", "You have connected to room: " + newroom);
+    // sent message to OLD room
+    socket.broadcast
+      .to(socket.room)
+      .emit("updatechat", `${socket.id} has left this room`);
+    // update socket session room title
+    socket.room = newroom;
+    socket.broadcast
+      .to(newroom)
+      .emit("updatechat", `${socket.id} has joined this room`);
+    //socket.emit("updaterooms", newroom);
   });
 });
 
