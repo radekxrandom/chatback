@@ -62,7 +62,7 @@ io.on("connection", socket => {
     users.push(user);
     console.log(`${user.name} has connected`);
     let usersInThisRoom = users.filter(usr => usr.room === socket.room);
-    if ((socket.room = "public")) {
+    if (socket.room === "public") {
       for (let i = 0; i < messages.length; i++) {
         socket.emit("message", messages[i]);
       }
