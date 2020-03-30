@@ -5,8 +5,7 @@ var cookieParser = require("cookie-parser");
 var logger = require("morgan");
 var bodyParser = require("body-parser");
 var cors = require("cors");
-
-var apiRouter = require("./routes/api");
+var passport = require("passport");
 
 var app = express();
 var server = require("http").Server(app);
@@ -20,8 +19,6 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 app.use(cookieParser());
 app.use(express.static(path.join(__dirname, "public")));
-
-app.use("/api", apiRouter);
 
 var mongoose = require("mongoose");
 var mongo =
@@ -40,7 +37,14 @@ app.use(
     extended: false
   })
 );
+app.use(express.json());
 app.use(bodyParser.json());
+
+require("./config/passport.js")(passport);
+app.use(passport.initialize());
+app.use(passport.session());
+var apiRouter = require("./routes/api")(app, express, passport);
+app.use("/api", apiRouter);
 
 app.use(function(req, res, next) {
   res.io = io;
@@ -62,7 +66,7 @@ io.on("connection", socket => {
     users.push(user);
     console.log(`${user.name} has connected`);
     let usersInThisRoom = users.filter(usr => usr.room === socket.room);
-    if (socket.room === "public") {
+    if ((socket.room = "public")) {
       for (let i = 0; i < messages.length; i++) {
         socket.emit("message", messages[i]);
       }
