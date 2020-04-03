@@ -15,6 +15,10 @@ var ChannelSchema = new Schema({
     type: String,
     required: false
   },
+  listOnMain: {
+    type: Boolean,
+    required: false
+  },
   users: [
     {
       type: Schema.Types.ObjectId,

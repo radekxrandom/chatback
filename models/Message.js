@@ -19,7 +19,8 @@ var MessageSchema = new Schema({
     type: Schema.Types.ObjectId,
     ref: "Channel",
     required: true
-  }
+  },
+  created: { type: Date, default: Date.now }
 });
 
 module.exports = mongoose.model("Message", MessageSchema);

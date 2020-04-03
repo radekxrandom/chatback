@@ -22,7 +22,7 @@ app.use(express.static(path.join(__dirname, "public")));
 
 var mongoose = require("mongoose");
 var mongo =
-  "mongodb+srv://getpies:pervmoj123@cluster0-wdadp.mongodb.net/now?retryWrites=true&w=majority";
+  "mongodb+srv://random:pies@cluster0-8quu1.mongodb.net/test?retryWrites=true&w=majority";
 
 var mongoDB = process.env.MONGODB_URI || mongo;
 mongoose.connect(mongoDB, {
@@ -30,6 +30,10 @@ mongoose.connect(mongoDB, {
 });
 var db = mongoose.connection;
 db.on("error", console.error.bind(console, "MongoDB connection error:"));
+
+const ChatUser = require("./models/ChatUser");
+const Channel = require("./models/Channel");
+const Message = require("./models/Message");
 
 app.use(cors());
 app.use(
@@ -55,18 +59,19 @@ var users = [];
 var rooms = [];
 var messages = [];
 
-io.on("connection", socket => {
+io.on("connection", async socket => {
   console.log(`a user ${socket.id} connected`);
   //io.to(`${socket.id}`).emit("hey", users);
-  console.log(users);
+  socket.emit("userlist", users);
   //users.socket.room = [];
   socket.on("username", user => {
     var this_user = user;
     user.room = socket.room;
+    socket.name = user.name;
     users.push(user);
     console.log(`${user.name} has connected`);
     let usersInThisRoom = users.filter(usr => usr.room === socket.room);
-    if ((socket.room = "public")) {
+    if (socket.room === "public") {
       for (let i = 0; i < messages.length; i++) {
         socket.emit("message", messages[i]);
       }
@@ -75,11 +80,16 @@ io.on("connection", socket => {
     socket.broadcast.to(socket.room).emit("userconnected", usersInThisRoom);
   });
 
-  socket.on("message", msg => {
+  socket.on("message", async msg => {
     msg.type = "inmes";
     console.log(msg);
     socket.emit("message", msg);
-    if (socket.room === "public") {
+    if (socket.room === "public" || socket.channel.logMessages === true) {
+      await new Message({
+        text: msg.text,
+        author: msg.author,
+        channel: socket.channel
+      }).save();
       if (messages.length < 10) {
         messages.push(msg);
       } else {
@@ -99,22 +109,26 @@ io.on("connection", socket => {
     console.log(`User ${socket.id} Disconnected`);
   });
 
-  socket.on("switchRoom", newroom => {
+  socket.on("switchRoom", async newroom => {
     // leave the current room (stored in session)
     socket.leave(socket.room);
     // join new room, received as function parameter
     socket.join(newroom);
-
+    var channelOptions = await Channel.findOne({ name: newroom });
+    console.log(channelOptions.name);
+    socket.channel = channelOptions;
     socket.emit("updatechat", "You have connected to room: " + newroom);
     // sent message to OLD room
     socket.broadcast
       .to(socket.room)
-      .emit("updatechat", `${socket.id} has left this room`);
+      .emit("updatechat", `${socket.name} has left this room`);
     // update socket session room title
     socket.room = newroom;
+    console.log(socket.room);
+
     socket.broadcast
       .to(newroom)
-      .emit("updatechat", `${socket.id} has joined this room`);
+      .emit("updatechat", `${socket.name} has joined this room`);
     //socket.emit("updaterooms", newroom);
   });
 });

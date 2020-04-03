@@ -22,5 +22,7 @@ module.exports = function(app, express, passport) {
   router.post("/login", auth.login);
   router.get("/channels", channels.listChannels);
   router.post("/create", checkToken, channels.createChannel);
+  router.get("/pwd/:id", channels.checkChannelPassword);
+  router.get("/chan/:name", channels.messages);
   return router;
 };
