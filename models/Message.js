@@ -20,6 +20,10 @@ var MessageSchema = new Schema({
     ref: "Channel",
     required: true
   },
+  date: {
+    type: String,
+    required: false
+  },
   created: { type: Date, default: Date.now }
 });
 

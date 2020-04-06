@@ -6,6 +6,11 @@ var logger = require("morgan");
 var bodyParser = require("body-parser");
 var cors = require("cors");
 var passport = require("passport");
+const Cryptr = require("cryptr");
+const cryptr = new Cryptr("gsugrsogsgoisjgas123");
+var bcrypt = require("bcryptjs");
+var salt = bcrypt.genSaltSync(10);
+var moment = require("moment");
 
 var app = express();
 var server = require("http").Server(app);
@@ -64,32 +69,24 @@ io.on("connection", async socket => {
   //io.to(`${socket.id}`).emit("hey", users);
   socket.emit("userlist", users);
   //users.socket.room = [];
-  socket.on("username", user => {
-    var this_user = user;
-    user.room = socket.room;
-    socket.name = user.name;
-    users.push(user);
-    console.log(`${user.name} has connected`);
-    let usersInThisRoom = users.filter(usr => usr.room === socket.room);
-    if (socket.room === "public") {
-      for (let i = 0; i < messages.length; i++) {
-        socket.emit("message", messages[i]);
-      }
-    }
-    socket.emit("userconnected", usersInThisRoom);
-    socket.broadcast.to(socket.room).emit("userconnected", usersInThisRoom);
-  });
 
   socket.on("message", async msg => {
     msg.type = "inmes";
+    let now = moment().format("DD/MM, HH:mm:ss");
+    msg.date = now;
     console.log(msg);
     socket.emit("message", msg);
-    if (socket.room === "public" || socket.channel.logMessages === true) {
-      await new Message({
-        text: msg.text,
+    if (socket.room === "public" || socket.channel.listOnMain === true) {
+      if (socket.channel.password) {
+        var encryptedText = cryptr.encrypt(msg.text);
+      }
+      let mes = await new Message({
+        text: encryptedText ? encryptedText : msg.text,
         author: msg.author,
-        channel: socket.channel
+        channel: socket.channel.id
       }).save();
+      console.log(socket.channel);
+      console.log(mes);
       if (messages.length < 10) {
         messages.push(msg);
       } else {
@@ -106,30 +103,73 @@ io.on("connection", async socket => {
     let usersInThisRoom = users.filter(usr => usr.room === socket.room);
     socket.emit("userconnected", usersInThisRoom);
     socket.broadcast.to(socket.room).emit("userconnected", usersInThisRoom);
-    console.log(`User ${socket.id} Disconnected`);
-  });
-
-  socket.on("switchRoom", async newroom => {
-    // leave the current room (stored in session)
-    socket.leave(socket.room);
-    // join new room, received as function parameter
-    socket.join(newroom);
-    var channelOptions = await Channel.findOne({ name: newroom });
-    console.log(channelOptions.name);
-    socket.channel = channelOptions;
-    socket.emit("updatechat", "You have connected to room: " + newroom);
-    // sent message to OLD room
     socket.broadcast
       .to(socket.room)
       .emit("updatechat", `${socket.name} has left this room`);
-    // update socket session room title
-    socket.room = newroom;
-    console.log(socket.room);
+    console.log(`User ${socket.id} Disconnected`);
+  });
 
-    socket.broadcast
-      .to(newroom)
-      .emit("updatechat", `${socket.name} has joined this room`);
-    //socket.emit("updaterooms", newroom);
+  socket.on("switchRoom", async (newRoom, user) => {
+    try {
+      console.log(socket.room);
+
+      socket.leave(socket.room);
+      var channelModel = await Channel.findOne({ name: newRoom.id });
+      if (channelModel.password) {
+        let pwdCheck = await bcrypt.compare(newRoom.pwd, channelModel.password);
+        var getIn = pwdCheck ? true : false;
+      } else {
+        getIn = true;
+      }
+      if (getIn) {
+        console.log(newRoom.id);
+        socket.channel = channelModel;
+        socket.room = newRoom.id;
+        socket.join(newRoom.id);
+        socket.emit("updatechat", "You have connected to room: " + newRoom.id);
+        // sent message to OLD room
+
+        // update socket session room title
+        console.log(socket.room);
+
+        user.room = socket.room;
+        socket.name = user.name;
+        users.push(user);
+        socket.broadcast
+          .to(socket.room)
+          .emit("updatechat", `${socket.name} has joined this room`);
+        console.log(`${user.name} has connected to ${user.room}`);
+        let usersInThisRoom = users.filter(usr => usr.room === socket.room);
+        if (socket.room === "public") {
+          for (let i = 0; i < messages.length; i++) {
+            socket.emit("message", messages[i]);
+          }
+        }
+        socket.emit("userconnected", usersInThisRoom);
+        socket.broadcast.to(socket.room).emit("userconnected", usersInThisRoom);
+
+        //send old messages
+        var messages = await Message.find({ channel: socket.channel.id }).sort(
+          "created"
+        );
+
+        for (inc = 0; inc < messages.length; inc++) {
+          if (socket.channel.password) {
+            var decryptedText = cryptr.decrypt(messages[inc].text);
+            messages[inc].text = decryptedText;
+          }
+          let formatedDate = moment(messages[inc].created).format(
+            "DD/MM, HH:mm:ss"
+          );
+          console.log(formatedDate);
+          messages[inc].date = formatedDate;
+          socket.emit("message", messages[inc]);
+          console.log(messages[inc].text);
+        }
+      }
+    } catch (err) {
+      console.log(err);
+    }
   });
 });
 

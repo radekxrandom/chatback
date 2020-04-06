@@ -11,13 +11,19 @@ var ChannelSchema = new Schema({
     type: String,
     required: false
   },
+  logMessages: {
+    type: Boolean,
+    required: true,
+    default: true
+  },
   password: {
     type: String,
     required: false
   },
   listOnMain: {
     type: Boolean,
-    required: false
+    required: true,
+    default: true
   },
   users: [
     {

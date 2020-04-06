@@ -24,6 +24,7 @@ exports.createChannel = async (req, res) => {
     chan.password = hashedPass;
   }
   chan.save();
+  await owner.updateOne({ $push: { channels: chan } });
   return res.status(200).json({ err: "All ok", ch: chan });
 };
 
@@ -55,4 +56,22 @@ exports.messages = async (req, res) => {
     return res.status(400).json({ err: "No such channel" });
   }
   return res.status(200).json({ mes: chan });
+};
+
+exports.showChannelsOnUserProfile = async (req, res) => {
+  let respons = await jwt.verify(req.token, "secretkey");
+  if (!respons) {
+    return res.status(400).json({ err: "Wrong token" });
+  }
+
+  var owner = await ChatUser.findById(respons.data.id)
+    .populate("Channels")
+    .exec();
+  if (owner.globalRole === 3) {
+    var allChannels = await Channel.find();
+    return res
+      .status(200)
+      .json({ allChannels: allChannels, ownChannels: owner.channels });
+  }
+  return res.status(200).json({ ownChannels: owner });
 };
