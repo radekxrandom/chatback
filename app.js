@@ -112,7 +112,6 @@ io.on("connection", async socket => {
   socket.on("switchRoom", async (newRoom, user) => {
     try {
       console.log(socket.room);
-
       socket.leave(socket.room);
       var channelModel = await Channel.findOne({ name: newRoom.id });
       if (channelModel.password) {
@@ -121,6 +120,7 @@ io.on("connection", async socket => {
       } else {
         getIn = true;
       }
+
       if (getIn) {
         console.log(newRoom.id);
         socket.channel = channelModel;
@@ -128,10 +128,8 @@ io.on("connection", async socket => {
         socket.join(newRoom.id);
         socket.emit("updatechat", "You have connected to room: " + newRoom.id);
         // sent message to OLD room
-
         // update socket session room title
         console.log(socket.room);
-
         user.room = socket.room;
         socket.name = user.name;
         users.push(user);
@@ -140,11 +138,13 @@ io.on("connection", async socket => {
           .emit("updatechat", `${socket.name} has joined this room`);
         console.log(`${user.name} has connected to ${user.room}`);
         let usersInThisRoom = users.filter(usr => usr.room === socket.room);
+
         if (socket.room === "public") {
           for (let i = 0; i < messages.length; i++) {
             socket.emit("message", messages[i]);
           }
         }
+
         socket.emit("userconnected", usersInThisRoom);
         socket.broadcast.to(socket.room).emit("userconnected", usersInThisRoom);
 

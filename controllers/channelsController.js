@@ -48,30 +48,58 @@ exports.checkChannelPassword = async (req, res) => {
   return res.status(200).json(false);
 };
 
-exports.checkIfPasswordIsCorrect = async (req, res) => {};
-
-exports.messages = async (req, res) => {
-  let chan = await Channel.findOne({ name: req.params.name });
-  if (!chan) {
-    return res.status(400).json({ err: "No such channel" });
-  }
-  return res.status(200).json({ mes: chan });
-};
-
 exports.showChannelsOnUserProfile = async (req, res) => {
   let respons = await jwt.verify(req.token, "secretkey");
   if (!respons) {
     return res.status(400).json({ err: "Wrong token" });
   }
 
-  var owner = await ChatUser.findById(respons.data.id)
-    .populate("Channels")
-    .exec();
+  var owner = await ChatUser.findById(respons.data.id);
+  let chans = owner.channels;
+  let channels = [];
+  for (let i = 0; i < chans.length; i++) {
+    let channel = await Channel.findById(chans[i]);
+    channels.push(channel);
+  }
   if (owner.globalRole === 3) {
     var allChannels = await Channel.find();
     return res
       .status(200)
-      .json({ allChannels: allChannels, ownChannels: owner.channels });
+      .json({ allChannels: allChannels, ownChannels: channels });
   }
-  return res.status(200).json({ ownChannels: owner });
+  return res.status(200).json({ ownChannels: channels });
+};
+
+exports.deleteChannel = async (req, res) => {
+  let respons = await jwt.verify(req.token, "secretkey");
+  if (!respons) {
+    return res.status(400).json({ err: "Wrong token" });
+  }
+  var owner = await ChatUser.findById(respons.data.id);
+  let channel = await Channel.findById(req.body.channelId);
+  if (channel.owner == respons.data.id || owner.globalRole === 3) {
+    await channel.deleteOne();
+    await Message.deleteMany({ channel: channel.id });
+    console.log(req.body.channelId);
+    return res
+      .status(200)
+      .json({ mes: "Succesfuly deleted channel and all related messages" });
+  }
+  return res.status(200).json({ mes: "Error" });
+};
+
+exports.channelOptions = async (req, res) => {
+  let respons = await jwt.verify(req.token, "secretkey");
+  if (!respons) {
+    return res.status(400).json({ err: "Wrong token" });
+  }
+  try {
+    let channel = await Channels.findByIdAndUpdate(
+      req.body.channelId,
+      req.body
+    );
+    return res.status(200).json({ mes: "all ok" });
+  } catch (err) {
+    return res.status(200).json({ err: "not ok" });
+  }
 };
