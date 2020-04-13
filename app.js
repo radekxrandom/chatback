@@ -89,7 +89,9 @@ io.on("connection", async socket => {
 
   socket.on("message", async msg => {
     msg.type = "inmes";
-    let now = moment().format("DD/MM, HH:mm:ss");
+    let now = moment()
+      .add(2, "h")
+      .format("DD.MM.YYYY, HH:mm:ss");
     msg.date = now;
     if (socket.room === "public" || socket.channel.listOnMain === true) {
       if (socket.channel.password) {
@@ -153,7 +155,6 @@ io.on("connection", async socket => {
           channelModel.save();
         }
         if (channelModel.encrypt) {
-          console.log("encrypted");
           if (!channelModel.publicKeys.includes(key)) {
             console.log("klucznik");
             console.log(key);
@@ -193,9 +194,9 @@ io.on("connection", async socket => {
             var decryptedText = cryptr.decrypt(messages[inc].text);
             messages[inc].text = decryptedText;
           }
-          let formatedDate = moment(messages[inc].created).format(
-            "DD/MM, HH:mm:ss"
-          );
+          let formatedDate = moment(messages[inc].created)
+            .add(2, "h")
+            .format("DD.MM.YYYY, HH:mm:ss");
           console.log(formatedDate);
           messages[inc].date = formatedDate;
           socket.emit("message", messages[inc]);
