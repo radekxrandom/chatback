@@ -17,7 +17,8 @@ exports.createChannel = async (req, res) => {
   let chan = await new Channel({
     name: req.body.name,
     owner: owner,
-    listOnMain: req.body.list
+    listOnMain: req.body.list,
+    encrypt: req.body.encrypt
   });
   if (req.body.password) {
     let hashedPass = await bcrypt.hash(req.body.password, salt);
@@ -37,15 +38,17 @@ exports.listChannels = async (req, res) => {
   return res.json({ channels: ugh });
 };
 
-exports.checkChannelPassword = async (req, res) => {
+exports.getChannelInfo = async (req, res) => {
   var chan = await Channel.findOne({ name: req.params.id });
+
   if (!chan) {
     return res.status(400).json({ err: "No such channel" });
   }
-  if (chan.password) {
-    return res.status(200).json(true);
-  }
-  return res.status(200).json(false);
+
+  let askPassword = chan.password ? true : false;
+  let isEncrypted = chan.encrypt ? true : false;
+
+  return res.status(200).json({ askPassword, isEncrypted });
 };
 
 exports.showChannelsOnUserProfile = async (req, res) => {

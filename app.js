@@ -11,10 +11,24 @@ const cryptr = new Cryptr("gsugrsogsgoisjgas123");
 var bcrypt = require("bcryptjs");
 var salt = bcrypt.genSaltSync(10);
 var moment = require("moment");
+var RSA = require("hybrid-crypto-js").RSA;
+var Crypt = require("hybrid-crypto-js").Crypt;
 
 var app = express();
 var server = require("http").Server(app);
 var io = require("socket.io")(server);
+
+var rateLimit = require("express-rate-limit");
+
+var limiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100 // limit each IP to 100 requests per windowMs
+});
+
+var authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 5
+});
 
 // view engine setup
 app.set("views", path.join(__dirname, "views"));
@@ -39,6 +53,7 @@ db.on("error", console.error.bind(console, "MongoDB connection error:"));
 const ChatUser = require("./models/ChatUser");
 const Channel = require("./models/Channel");
 const Message = require("./models/Message");
+const socketFunctions = require("./utils/socketFunctions");
 
 app.use(cors());
 app.use(
@@ -48,11 +63,13 @@ app.use(
 );
 app.use(express.json());
 app.use(bodyParser.json());
-
 require("./config/passport.js")(passport);
 app.use(passport.initialize());
 app.use(passport.session());
 var apiRouter = require("./routes/api")(app, express, passport);
+app.use("/api/login", authLimiter);
+app.use("/api/register", authLimiter);
+app.use("/api", limiter);
 app.use("/api", apiRouter);
 
 app.use(function(req, res, next) {
@@ -74,8 +91,6 @@ io.on("connection", async socket => {
     msg.type = "inmes";
     let now = moment().format("DD/MM, HH:mm:ss");
     msg.date = now;
-    console.log(msg);
-    socket.emit("message", msg);
     if (socket.room === "public" || socket.channel.listOnMain === true) {
       if (socket.channel.password) {
         var encryptedText = cryptr.encrypt(msg.text);
@@ -86,14 +101,8 @@ io.on("connection", async socket => {
         channel: socket.channel.id
       }).save();
       console.log(socket.channel);
-      console.log(mes);
-      if (messages.length < 10) {
-        messages.push(msg);
-      } else {
-        messages.shift;
-        messages.push(msg);
-      }
     }
+    socket.emit("message", msg);
     socket.broadcast.to(socket.room).emit("message", msg);
   });
 
@@ -109,7 +118,7 @@ io.on("connection", async socket => {
     console.log(`User ${socket.id} Disconnected`);
   });
 
-  socket.on("switchRoom", async (newRoom, user) => {
+  socket.on("switchRoom", async (newRoom, user, key) => {
     try {
       console.log(socket.room);
       socket.leave(socket.room);
@@ -122,8 +131,10 @@ io.on("connection", async socket => {
       }
 
       if (getIn) {
-        console.log(newRoom.id);
+        console.log("klucznik");
+        console.log(key);
         socket.channel = channelModel;
+
         socket.room = newRoom.id;
         socket.join(newRoom.id);
         socket.emit("updatechat", "You have connected to room: " + newRoom.id);
@@ -136,6 +147,30 @@ io.on("connection", async socket => {
         socket.broadcast
           .to(socket.room)
           .emit("updatechat", `${socket.name} has joined this room`);
+        let chatusr = await ChatUser.findOne({ username: user.name });
+        if (!channelModel.users.includes(chatusr.id)) {
+          channelModel.users.push(chatusr.id);
+          channelModel.save();
+        }
+        if (channelModel.encrypt) {
+          console.log("encrypted");
+          if (!channelModel.publicKeys.includes(key)) {
+            console.log("klucznik");
+            console.log(key);
+            console.log(channelModel.publicKeys);
+            let ks = channelModel.publicKeys;
+            ks.push(key);
+            ks.filter(k => k);
+            console.log(ks);
+            channelModel.publicKeys = ks;
+            channelModel.save();
+            console.log(channelModel.publicKeys);
+          }
+          socket.emit("keys", channelModel.publicKeys);
+          socket.broadcast
+            .to(socket.room)
+            .emit("keys", channelModel.publicKeys);
+        }
         console.log(`${user.name} has connected to ${user.room}`);
         let usersInThisRoom = users.filter(usr => usr.room === socket.room);
 

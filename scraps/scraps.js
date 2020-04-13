@@ -51,3 +51,100 @@ socket.on("username", user => {
   socket.emit("userconnected", usersInThisRoom);
   socket.broadcast.to(socket.room).emit("userconnected", usersInThisRoom);
 });
+
+<div className="list">
+  <a className="clickable looklikep" href="/room/public">
+    - Public (Online:{" "}
+    {this.state.userlist.filter(usr => usr.room === "public").length})
+  </a>
+  {this.state.channels
+    .filter(chn => chn.name !== "public")
+    .map((channel, index) => (
+      <a
+        key={index}
+        className="clickable looklikep"
+        href={`/room/${channel.name}`}
+      >
+        {" "}
+        - {channel.name} (Online:{" "}
+        {this.state.userlist.filter(usr => usr.room === channel.name).length})
+      </a>
+    ))}
+</div>;
+
+const form0 = document.getElementById("postform");
+if ($(".fastform").length) {
+  const form1 = document.getElementsByClassName("fastform")[0];
+  form1.addEventListener("submit", incremenetCounter);
+}
+form0.addEventListener("submit", incremenetCounter);
+
+//initialize and stuff
+
+const isDisplayVisible = () => {
+  if (!document.getElementById("counterDisplay")) {
+    return false;
+  }
+  return true;
+};
+
+const elementExists = element => {
+  if (!localStorage.getItem(element)) {
+    return false;
+  }
+  return true;
+};
+
+const initializeElementInLocalStorage = (el, val) => {
+  localStorage.setItem(el, val);
+};
+
+const initializeLocalStorage = () => {
+  if (!elementExists("counter")) {
+    initializeElementInLocalStorage("counter", 2000);
+  }
+  if (!elementExists("display")) {
+    initializeElementInLocalStorage("display", "exists");
+  }
+};
+
+const appendDisplay = () => {
+  //don't add the same element twice
+  if (!isDisplayVisible) {
+    return;
+  }
+
+  var count = localStorage.getItem("counter");
+
+  let newHElement = document.createElement("h1");
+  newHElement.innerHTML = `Posts counter: ${count}`;
+  newHElement.setAttribute("id", "counterDisplay");
+
+  document.getElementsByClassName("boardBanner")[0].appendChild(newHElement);
+};
+
+const updateDisplayedValue = value => {
+  let element = document.getElementById("counterDisplay");
+  element.innerHTML = `Posts counter: ${value}`;
+};
+
+const incremenetCounter = () => {
+  if (!elementExists("counter")) {
+    initializeCounter(2000);
+  }
+
+  let currentCount = parseInt(localStorage.getItem("counter"));
+  currentCount++;
+
+  localStorage.setItem("counter", currentCount);
+  updateDisplayedValue(currentCount);
+};
+
+const run = () => {
+  initializeLocalStorage();
+  appendDisplay();
+
+  document.addEventListener("submit", incremenetCounter);
+};
+
+run();
