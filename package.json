@@ -14,7 +14,9 @@
     "cryptr": "^6.0.2",
     "debug": "~2.6.9",
     "express": "^4.17.1",
+    "express-rate-limit": "^5.1.1",
     "http-errors": "~1.6.3",
+    "hybrid-crypto-js": "^0.2.2",
     "is-empty": "^1.2.0",
     "jade": "~1.11.0",
     "jsonwebtoken": "^8.5.1",
@@ -26,6 +28,7 @@
     "passport": "^0.4.1",
     "passport-jwt": "^4.0.0",
     "socket.io": "^2.3.0",
+    "uuid": "^7.0.3",
     "validator": "^13.0.0"
   }
 }

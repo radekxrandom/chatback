@@ -43,7 +43,18 @@ var ChannelSchema = new Schema({
       ref: "Messages",
       required: false
     }
-  ]
+  ],
+  publicKeys: [
+    {
+      type: String,
+      required: false
+    }
+  ],
+  encrypt: {
+    type: Boolean,
+    required: true,
+    default: false
+  }
 });
 
 module.exports = mongoose.model("Channel", ChannelSchema);
