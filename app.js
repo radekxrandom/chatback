@@ -219,8 +219,16 @@ io.of("/conversation").on("connect", socket => {
           socket.disconnect(true);
           return false;
         }
+        if (
+          conversation.secondUser &&
+          conversation.secondUser === userData.id
+        ) {
+          var secUsrId = userData.id;
+        } else {
+          secUsrId = uuidv4();
+        }
         console.log("SEC USER");
-        const secUsrId = uuidv4();
+
         conversation.secondUser = secUsrId;
         userData.id = secUsrId;
 
