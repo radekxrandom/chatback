@@ -85,21 +85,212 @@ var rooms = [];
 const sleep = waitTimeInMs =>
   new Promise(resolve => setTimeout(resolve, waitTimeInMs));
 
+// temporary conversations connect of /conversation namespace
+const nsp = io.of("/conversation");
+nsp.on("connection", convSocket => {
+  console.log("conv connected");
+  convSocket.on("conversationAuth", async (convData, userData, key) => {
+    try {
+      console.log(convSocket.room);
+      convSocket.leave(convSocket.room);
+      var conversation = await Conversation.findOne({ url: convData.url });
+      if (!conversation) {
+        console.log("wrong conversation");
+        convSocket.disconnect(true);
+        return false;
+      }
+      console.log(conversation.connectedUsersCount);
+      if (userData.id !== conversation.owner) {
+        if (
+          conversation.secondUser &&
+          conversation.secondUser !== userData.id
+        ) {
+          console.log("WRONG ID");
+          convSocket.emit("wrongID", false);
+          convSocket.disconnect(true);
+          return false;
+        }
+        if (
+          conversation.secondUser &&
+          conversation.secondUser === userData.id
+        ) {
+          var secUsrId = userData.id;
+        } else {
+          secUsrId = uuidv4();
+        }
+        console.log("SEC USER");
+
+        conversation.secondUser = secUsrId;
+        userData.id = secUsrId;
+
+        convSocket.emit("secUserId", secUsrId);
+      }
+      if (conversation.publicKeys.length < 3) {
+        console.log("add key");
+        conversation.publicKeys.push(key);
+      } else {
+        console.log("THERE ARE KEYS ALREADY");
+      }
+      conversation.connectedUsersCount++;
+      console.log(conversation.connectedUsersCount);
+      convSocket.room = convData.url;
+      convSocket.join(convData.url);
+      console.log(convSocket.room);
+      await conversation.save();
+      convSocket.data = userData.id;
+      convSocket.emit("currentUsrId", userData.id);
+      let allUsers = [conversation.owner, conversation.secondUser];
+      console.log(allUsers);
+      convSocket.emit("allUsers", allUsers);
+      convSocket.broadcast.to(convSocket.room).emit("allUsers", allUsers);
+
+      convSocket.emit("keys", conversation.publicKeys);
+      convSocket.broadcast
+        .to(convSocket.room)
+        .emit("keys", conversation.publicKeys);
+
+      if (conversation.messages.length > 0) {
+        console.log("mesagess send");
+        for (var ir = 0; ir < conversation.messages.length; ir++) {
+          convSocket.emit("message", conversation.messages[ir]);
+        }
+      }
+
+      //send server notification that user has connected
+      let serverMsg = {
+        type: "userJoined",
+        date: moment().format("HH:mm:ss"),
+        user: userData.id,
+        order: false,
+        author: "Server"
+      };
+
+      convSocket.emit("serverNotification", serverMsg);
+      convSocket.broadcast
+        .to(convSocket.room)
+        .emit("serverNotification", serverMsg);
+
+      convSocket.conversation = conversation;
+      //console.log(convSocket);
+    } catch (err) {
+      console.log(err);
+      convSocket.emit("error", err);
+    }
+  });
+
+  nsp.on("disconnect", async () => {
+    try {
+      let serverMsg = {
+        type: "userDisconnected",
+        date: moment().format("HH:mm:ss"),
+        user: convSocket.data,
+        order: false,
+        author: "Server"
+      };
+
+      convSocket.emit("serverNotification", serverMsg);
+      convSocket.broadcast
+        .to(convSocket.room)
+        .emit("serverNotification", serverMsg);
+
+      //delete conv if no users remain
+      let conv = await Conversation.findById(convSocket.conversation.id);
+      console.log(conv.connectedUsersCount);
+      conv.connectedUsersCount--;
+      console.log(conv.connectedUsersCount);
+
+      await conv.save();
+      if (conv.connectedUsersCount === 0) {
+        //wait for 15 minutes and then delete if still empty
+        sleep(1500000).then(async () => {
+          console.log("spiulki");
+          console.log(conv.url);
+          let con = await Conversation.findById(convSocket.conversation.id);
+          if (con.connectedUsersCount === 0) {
+            await con.remove();
+          }
+        });
+      }
+    } catch (err) {
+      let serverMsg = {
+        type: "error",
+        date: moment().format("HH:mm:ss"),
+        order: false,
+        author: "Server",
+        text: "There was error with disconnection"
+      };
+      convSocket.emit("serverNotification", serverMsg);
+      console.log(err);
+    }
+  });
+
+  convSocket.on("message", async msg => {
+    try {
+      console.log(msg);
+      let conv = await Conversation.findById(convSocket.conversation.id);
+      console.log(conv.url);
+      console.log(convSocket.room);
+      msg.date = moment().format("HH:mm:ss");
+      conv.messages.push(msg);
+      await conv.save();
+      convSocket.emit("message", msg);
+      convSocket.broadcast.to(convSocket.room).emit("message", msg);
+    } catch (err) {
+      let serverMsg = {
+        type: "error",
+        date: moment().format("HH:mm:ss"),
+        order: false,
+        author: "Server",
+        text: "There was error with sending a message"
+      };
+      convSocket.emit("serverNotification", serverMsg);
+      console.log(err);
+    }
+  });
+
+  convSocket.on("colorChange", color => {
+    convSocket.broadcast.to(convSocket.room).emit("colorChange", color);
+  });
+
+  convSocket.on("delete", async usrId => {
+    try {
+      let conv = await Conversation.findById(convSocket.conversation.id);
+      if (conv.owner === usrId) {
+        convSocket.in(convSocket.room).disconnect(true);
+        await conv.remove();
+      }
+    } catch (err) {
+      let serverMsg = {
+        type: "error",
+        date: moment().format("HH:mm:ss"),
+        order: false,
+        author: "Server",
+        text: "Unable to delete. Try again."
+      };
+      convSocket.emit("serverNotification", serverMsg);
+      console.log(err);
+    }
+  });
+});
+
 // regular rooms connect of standard namespace
 io.on("connection", async socket => {
+  console.log("NORM ROOM NSP");
   console.log(`a user ${socket.id} connected`);
-  console.log(socket.room);
   //io.to(`${socket.id}`).emit("hey", users);
   socket.emit("userlist", users);
   //users.socket.room = [];
 
   socket.on("message", async msg => {
-    msg.type = "inmes";
     msg.date = moment().format("DD/MM, HH:mm:ss");
+    console.log("MESSAGE NORM");
+    console.log(msg.author);
+    console.log(socket.channel.id);
     let mes = await new Message({
       text: cryptr.encrypt(msg.text),
       author: msg.author,
-      channel: socket.channel.id
+      channel: socket.channel.id,
+      color: msg.color
     }).save();
     socket.emit("message", msg);
     socket.broadcast.to(socket.room).emit("message", msg);
@@ -113,15 +304,24 @@ io.on("connection", async socket => {
     let usersInThisRoom = users.filter(usr => usr.room === socket.room);
     socket.emit("userconnected", usersInThisRoom);
     socket.broadcast.to(socket.room).emit("userconnected", usersInThisRoom);
-    socket.broadcast
-      .to(socket.room)
-      .emit("updatechat", `${socket.name} has left this room`);
+
+    let serverMsg = {
+      type: "userLeft",
+      date: moment().format("HH:mm:ss"),
+      user: socket.name,
+      order: false,
+      author: "Server",
+      room: socket.room
+    };
+    socket.emit("serverNotification", serverMsg);
+    socket.broadcast.to(socket.room).emit("serverNotification", serverMsg);
+    console.log("NORM ROOM DISCONNECTION");
     console.log(`User ${socket.id} Disconnected`);
   });
 
   socket.on("switchRoom", async (newRoom, user, key) => {
     try {
-      console.log(socket.room);
+      console.log("SWITCH ROOM");
       socket.leave(socket.room);
       var channelModel = await Channel.findOne({ name: newRoom.id });
       if (channelModel.password) {
@@ -135,16 +335,25 @@ io.on("connection", async socket => {
         socket.channel = channelModel;
         socket.room = newRoom.id;
         socket.join(newRoom.id);
-        socket.emit("updatechat", "You have connected to room: " + newRoom.id);
+
         // sent message to OLD room
         // update socket session room title
         console.log(socket.room);
         user.room = socket.room;
         socket.name = user.name;
         users.push(user);
-        socket.broadcast
-          .to(socket.room)
-          .emit("updatechat", `${socket.name} has joined this room`);
+
+        let serverMsg = {
+          type: "userJoined",
+          date: moment().format("HH:mm:ss"),
+          user: socket.name,
+          order: false,
+          author: "Server",
+          room: newRoom.id
+        };
+        socket.emit("serverNotification", serverMsg);
+        socket.broadcast.to(socket.room).emit("serverNotification", serverMsg);
+
         let chatusr = await ChatUser.findOne({ username: user.name });
         if (chatusr) {
           if (!channelModel.users.includes(chatusr.id)) {
@@ -155,14 +364,11 @@ io.on("connection", async socket => {
           console.log("encrypted");
           if (!channelModel.publicKeys.includes(key)) {
             console.log("klucznik");
-            console.log(channelModel.publicKeys);
             let ks = channelModel.publicKeys;
             ks.push(key);
             ks = Array.from(new Set(ks));
             ks.filter(k => k);
-            console.log(ks);
             channelModel.publicKeys = ks;
-            console.log(channelModel.publicKeys);
           }
           socket.emit("keys", channelModel.publicKeys);
           socket.broadcast
@@ -181,7 +387,7 @@ io.on("connection", async socket => {
           "created"
         );
 
-        for (inc = 0; inc < messages.length && inc < 10; inc++) {
+        for (var inc = 0; inc < messages.length && inc < 10; inc++) {
           messages[inc].text = cryptr.decrypt(messages[inc].text);
           messages[inc].date = moment(messages[inc].created).format(
             "DD/MM, HH:mm:ss"
@@ -191,150 +397,6 @@ io.on("connection", async socket => {
       }
     } catch (err) {
       console.log(err);
-    }
-  });
-});
-
-// temporary conversations connect of /conversation namespace
-io.of("/conversation").on("connect", socket => {
-  console.log("conv connected");
-  socket.on("conversationAuth", async (convData, userData, key) => {
-    try {
-      console.log(socket.room);
-      socket.leave(socket.room);
-      var conversation = await Conversation.findOne({ url: convData.url });
-      if (!conversation) {
-        console.log("wrong conversation");
-        socket.disconnect(true);
-        return false;
-      }
-      console.log(conversation.connectedUsersCount);
-      if (userData.id !== conversation.owner) {
-        if (
-          conversation.secondUser &&
-          conversation.secondUser !== userData.id
-        ) {
-          console.log("WRONG ID");
-          socket.emit("wrongID", false);
-          socket.disconnect(true);
-          return false;
-        }
-        if (
-          conversation.secondUser &&
-          conversation.secondUser === userData.id
-        ) {
-          var secUsrId = userData.id;
-        } else {
-          secUsrId = uuidv4();
-        }
-        console.log("SEC USER");
-
-        conversation.secondUser = secUsrId;
-        userData.id = secUsrId;
-
-        socket.emit("secUserId", secUsrId);
-      }
-      if (conversation.publicKeys.length < 3) {
-        console.log("add key");
-        conversation.publicKeys.push(key);
-      } else {
-        console.log("THERE ARE KEYS ALREADY");
-      }
-      conversation.connectedUsersCount++;
-      console.log(conversation.connectedUsersCount);
-      socket.room = convData.url;
-      socket.join(convData.url);
-      console.log(socket.room);
-      await conversation.save();
-      socket.data = userData.id;
-      socket.emit("currentUsrId", userData.id);
-      let allUsers = [conversation.owner, conversation.secondUser];
-      console.log(allUsers);
-      socket.emit("allUsers", allUsers);
-      socket.broadcast.to(socket.room).emit("allUsers", allUsers);
-
-      socket.emit("keys", conversation.publicKeys);
-      socket.broadcast.to(socket.room).emit("keys", conversation.publicKeys);
-
-      if (conversation.messages.length > 0) {
-        console.log("mesagess send");
-        for (var ir = 0; ir < conversation.messages.length; ir++) {
-          socket.emit("message", conversation.messages[ir]);
-        }
-      }
-
-      //send server notification that user has connected
-      let serverMsg = {
-        type: "userJoined",
-        date: moment().format("HH:mm:ss"),
-        user: userData.id,
-        order: false,
-        author: "Server"
-      };
-
-      socket.emit("serverNotification", serverMsg);
-      socket.broadcast.to(socket.room).emit("serverNotification", serverMsg);
-
-      socket.conversation = conversation;
-    } catch (err) {
-      console.log(err);
-      socket.emit("error", err);
-    }
-  });
-
-  socket.on("disconnect", async () => {
-    let serverMsg = {
-      type: "userDisconnected",
-      date: moment().format("HH:mm:ss"),
-      user: socket.data,
-      order: false,
-      author: "Server"
-    };
-
-    socket.emit("serverNotification", serverMsg);
-    socket.broadcast.to(socket.room).emit("serverNotification", serverMsg);
-
-    //delete conv if no users remain
-    let conv = await Conversation.findById(socket.conversation.id);
-    console.log(conv.connectedUsersCount);
-    conv.connectedUsersCount--;
-    console.log(conv.connectedUsersCount);
-
-    await conv.save();
-    if (conv.connectedUsersCount === 0) {
-      //wait for 15 minutes and then delete if still empty
-      sleep(1500000).then(async () => {
-        console.log("spiulki");
-        console.log(conv.url);
-        let con = await Conversation.findById(socket.conversation.id);
-        if (con.connectedUsersCount === 0) {
-          await con.remove();
-        }
-      });
-    }
-  });
-
-  socket.on("message", async msg => {
-    console.log(msg);
-    let conv = await Conversation.findById(socket.conversation.id);
-    console.log(conv.url);
-    console.log(socket.room);
-    msg.date = moment().format("HH:mm:ss");
-    conv.messages.push(msg);
-    await conv.save();
-    socket.emit("message", msg);
-    socket.broadcast.to(socket.room).emit("message", msg);
-  });
-
-  socket.on("colorChange", async color => {
-    socket.broadcast.to(socket.room).emit("colorChange", color);
-  });
-
-  socket.on("delete", async usrId => {
-    let conv = await Conversation.findById(socket.conversation.id);
-    if (conv.owner === usrId) {
-      socket.in(socket.room).disconnect(true);
-      await conv.remove();
     }
   });
 });
