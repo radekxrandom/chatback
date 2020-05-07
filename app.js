@@ -14,6 +14,7 @@ var moment = require("moment");
 var RSA = require("hybrid-crypto-js").RSA;
 var Crypt = require("hybrid-crypto-js").Crypt;
 const { v4: uuidv4 } = require("uuid");
+const jwt = require("jsonwebtoken");
 
 var app = express();
 var server = require("http").Server(app);
@@ -56,6 +57,15 @@ const Channel = require("./models/Channel");
 const Message = require("./models/Message");
 const Conversation = require("./models/Conversation");
 const socketFunctions = require("./utils/socketFunctions");
+/*
+const xpkej = async () => {
+  const doc = await ChatUser.find({ username: "randomis" });
+  const changeStream = doc.watch().on("change", change => console.log(change));
+  doc.email = "psipies@test.com";
+  await doc.save();
+};
+xpkej();
+*/
 
 app.use(cors());
 app.use(
@@ -71,19 +81,108 @@ app.use(passport.session());
 var apiRouter = require("./routes/api")(app, express, passport);
 app.use("/api/login", authLimiter);
 app.use("/api/register", authLimiter);
-app.use("/api", limiter);
+//app.use("/api", limiter);
 app.use("/api", apiRouter);
 
 app.use(function(req, res, next) {
-  res.io = io;
+  req.io = io;
   next();
 });
+
+const getUserDataFromJWT = async token => {
+  const bearer = token.split(" ");
+  const ugh = bearer[1];
+  let decodedUserToken = await jwt.verify(ugh, "secretkey");
+  console.log(decodedUserToken);
+  if (!decodedUserToken) {
+    return false;
+  }
+  return decodedUserToken;
+};
 
 var users = [];
 var rooms = [];
 
 const sleep = waitTimeInMs =>
   new Promise(resolve => setTimeout(resolve, waitTimeInMs));
+
+const utilNSP = io.of("/util");
+utilNSP.on("connection", uSocket => {
+  console.log("util connected");
+
+  uSocket.on("auth", async authData => {
+    console.log("auth con");
+    let userData = await getUserDataFromJWT(authData.token);
+    let user = await ChatUser.findById(userData.data.id);
+
+    if (user.invites.length) {
+      for (let i = 0; i < user.invites.length; i++) {
+        uSocket.emit("friendRequest", user.invites[i]);
+      }
+    }
+    uSocket.user = user;
+    uSocket.room = user.notificationRoomID;
+    uSocket.join(user.notificationRoomID);
+    let list = user.friends.map(u => {
+      delete u.password;
+      delete u.email;
+      delete u.notificationRoomID;
+      delete u.reset;
+      delete u.invites;
+      delete u.friends;
+      delete u.channels;
+      return u;
+    });
+    uSocket.emit("friendList", list);
+  });
+
+  uSocket.on("sendFriendRequest", async ugh => {
+    let invitation = {
+      username: uSocket.user.username,
+      user_id: uSocket.user.id,
+      responded: false,
+      inv_id: uuidv4()
+    };
+
+    let invited = await ChatUser.findOne({ searchID: ugh.searchID });
+    console.log(invited.username);
+    invited.invites.push(invitation);
+
+    uSocket.emit("confirmation", "invitation sent");
+    uSocket.broadcast
+      .to(invited.notificationRoomID)
+      .emit("friendRequest", invitation);
+    await invited.save();
+  });
+
+  uSocket.on("confirmedRequest", async request => {
+    console.log(request);
+    var userEhh = await ChatUser.findById(uSocket.user._id);
+    let invit = userEhh.invites.filter(inv => inv.inv_id !== request.inv_id);
+    userEhh.invites = invit;
+    if (request.response === true) {
+      let inviting = await ChatUser.findById(request.user_id);
+      let newFriend = {
+        id: inviting._id,
+        name: inviting.username,
+        searchID: inviting.searchID
+      };
+      userEhh.friends.push(newFriend);
+      uSocket.emit("requestAnswer", true);
+      uSocket.broadcast
+        .to(inviting.notificationRoomID)
+        .emit("requestAnswer", true);
+    } else {
+      uSocket.emit("requestAnswer", false);
+      uSocket.user = userEhh;
+    }
+    await userEhh.save();
+  });
+
+  uSocket.on("message", mes => {
+    uSocket.emit("message", mes);
+  });
+});
 
 // temporary conversations connect of /conversation namespace
 const nsp = io.of("/conversation");
@@ -280,6 +379,10 @@ io.on("connection", async socket => {
   //io.to(`${socket.id}`).emit("hey", users);
   socket.emit("userlist", users);
   //users.socket.room = [];
+
+  socket.on("test", data => {
+    console.log(data);
+  });
 
   socket.on("message", async msg => {
     msg.date = moment().format("DD/MM, HH:mm:ss");

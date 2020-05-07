@@ -49,7 +49,7 @@ exports.createNewChannel = async (req, res) => {
 
 // /api/channels/list
 exports.listAllChannels = async (req, res) => {
-  var ugh = await Channel.find({ listOnMain: true });
+  var ugh = await Channel.find({ listOnMain: true }).select("-password");
   if (!ugh) {
     return res.status(200).json({ mes: "no channels" });
   }
@@ -81,10 +81,16 @@ exports.listChannelsOnUserProfile = async (req, res) => {
   var owner = await ChatUser.findById(decodedUserToken.data.id);
   let chans = owner.channels;
   let channels = [];
+  var newChans = [];
   for (let i = 0; i < chans.length; i++) {
-    let channel = await Channel.findById(chans[i]);
-    channels.push(channel);
+    let channel = await Channel.findById(chans[i]).select("-password");
+    if (channel !== null) {
+      channels.push(channel);
+      newChans.push(channel.id);
+    }
   }
+  owner.channels = newChans;
+  await owner.save();
   if (owner.globalRole === 3) {
     var allChannels = await Channel.find();
     return res
@@ -96,30 +102,37 @@ exports.listChannelsOnUserProfile = async (req, res) => {
 
 // /api/channel/delete
 exports.deleteChannel = async (req, res) => {
-  let decodedUserToken = await jwt.verify(req.token, "secretkey");
-  if (!decodedUserToken) {
-    return res.status(400).json({ err: "Wrong token" });
+  try {
+    let decodedUserToken = await jwt.verify(req.token, "secretkey");
+    if (!decodedUserToken) {
+      return res.status(400).json({ err: "Wrong token" });
+    }
+    var owner = await ChatUser.findById(decodedUserToken.data.id);
+    let channel = await Channel.findById(req.body.id);
+    if (channel.owner == decodedUserToken.data.id || owner.globalRole === 3) {
+      await channel.deleteOne();
+      await Message.deleteMany({ channel: channel.id });
+      console.log(req.body.channelId);
+      return res
+        .status(200)
+        .json({ mes: "Succesfuly deleted channel and all related messages" });
+    }
+    return res.status(200).json({ mes: "Error" });
+  } catch (err) {
+    console.log("error" + err);
+    return res.status(200).json({ mes: "Error" });
   }
-  var owner = await ChatUser.findById(decodedUserToken.data.id);
-  let channel = await Channel.findById(req.body.channelId);
-  if (channel.owner == decodedUserToken.data.id || owner.globalRole === 3) {
-    await channel.deleteOne();
-    await Message.deleteMany({ channel: channel.id });
-    console.log(req.body.channelId);
-    return res
-      .status(200)
-      .json({ mes: "Succesfuly deleted channel and all related messages" });
-  }
-  return res.status(200).json({ mes: "Error" });
 };
 
-exports.changeChannelOptions = async (req, res) => {
-  let decodedUserToken = await jwt.verify(req.token, "secretkey");
-  if (!decodedUserToken) {
+exports.editChannelOptions = async (req, res) => {
+  try {
+    let decodedUserToken = await jwt.verify(req.token, "secretkey");
+  } catch (err) {
+    console.log("wrong token" + err);
     return res.status(400).json({ err: "Wrong token" });
   }
   try {
-    let channel = await Channel.findByIdAndUpdate(req.body.channelId, req.body);
+    let channel = await Channel.findByIdAndUpdate(req.body.id, req.body);
     return res.status(200).json({ mes: "all ok" });
   } catch (err) {
     return res.status(200).json({ err: "not ok" });

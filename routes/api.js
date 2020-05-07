@@ -3,6 +3,7 @@ module.exports = function(app, express, passport) {
   var auth = require("../controllers/authController");
   var channels = require("../controllers/channelsController");
   var conversation = require("../controllers/conversationController");
+  var friends = require("../controllers/friendsController");
 
   const checkToken = (req, res, next) => {
     const header = req.headers["authorization"];
@@ -29,8 +30,10 @@ module.exports = function(app, express, passport) {
     checkToken,
     channels.listChannelsOnUserProfile
   );
+  router.post("/user/search", checkToken, friends.findUsername);
   router.post("/channel/delete", checkToken, channels.deleteChannel);
   router.get("/check", checkToken, channels.showUser);
   router.post("/conversation/create", conversation.createNewConversation);
+  router.post("/channel/edit", checkToken, channels.editChannelOptions);
   return router;
 };

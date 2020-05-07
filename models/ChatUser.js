@@ -15,10 +15,30 @@ var ChatUserSchema = new Schema({
     type: String,
     reuired: false
   },
+  notificationRoomID: {
+    type: String,
+    required: true
+  },
+  searchID: {
+    type: String,
+    required: true
+  },
   reset: {
     type: String,
     required: false
   },
+  invites: [
+    {
+      type: Object,
+      required: false
+    }
+  ],
+  friends: [
+    {
+      type: Object,
+      required: false
+    }
+  ],
   // 0 - regular user, 1 - moderator, 2 - administrator, 3 - owner
   globalRole: {
     type: Number,
