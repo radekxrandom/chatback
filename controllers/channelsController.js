@@ -60,7 +60,6 @@ exports.listAllChannels = async (req, res) => {
 // /api/channel/options/:id
 exports.getChannelOptions = async (req, res) => {
   var chan = await Channel.findOne({ name: req.params.id });
-
   if (!chan) {
     return res.status(400).json({ err: "No such channel" });
   }

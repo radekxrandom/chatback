@@ -39,6 +39,12 @@ var ChatUserSchema = new Schema({
       required: false
     }
   ],
+  messages: [
+    {
+      type: Object,
+      required: false
+    }
+  ],
   // 0 - regular user, 1 - moderator, 2 - administrator, 3 - owner
   globalRole: {
     type: Number,

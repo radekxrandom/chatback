@@ -90,14 +90,15 @@ app.use(function(req, res, next) {
 });
 
 const getUserDataFromJWT = async token => {
-  const bearer = token.split(" ");
-  const ugh = bearer[1];
+  let bearer = token.split(" ");
+  let ugh = bearer[1];
   let decodedUserToken = await jwt.verify(ugh, "secretkey");
   console.log(decodedUserToken);
   if (!decodedUserToken) {
     return false;
   }
-  return decodedUserToken;
+  let user = await ChatUser.findById(decodedUserToken.data.id);
+  return user;
 };
 
 var users = [];
@@ -106,45 +107,61 @@ var rooms = [];
 const sleep = waitTimeInMs =>
   new Promise(resolve => setTimeout(resolve, waitTimeInMs));
 
+const createFriendObject = friend => {
+  let newFriend = {
+    id: friend._id,
+    name: friend.username,
+    searchID: friend.searchID,
+    pmName: friend.notificationRoomID
+  };
+  return newFriend;
+};
+
 const utilNSP = io.of("/util");
 utilNSP.on("connection", uSocket => {
   console.log("util connected");
-
   uSocket.on("auth", async authData => {
     console.log("auth con");
-    let userData = await getUserDataFromJWT(authData.token);
-    let user = await ChatUser.findById(userData.data.id);
+    let user = await getUserDataFromJWT(authData.token);
 
     if (user.invites.length) {
       for (let i = 0; i < user.invites.length; i++) {
         uSocket.emit("friendRequest", user.invites[i]);
       }
     }
+
+    console.log(uSocket.id);
     uSocket.user = user;
     uSocket.room = user.notificationRoomID;
     uSocket.join(user.notificationRoomID);
-    let list = user.friends.map(u => {
-      delete u.password;
-      delete u.email;
-      delete u.notificationRoomID;
-      delete u.reset;
-      delete u.invites;
-      delete u.friends;
-      delete u.channels;
-      return u;
+    let list = user.friends;
+    let pies = Array.from(new Set(list));
+    let est = Array.from(new Set(pies.map(a => a.pmName))).map(pmName => {
+      return pies.find(a => a.pmName === pmName);
     });
-    uSocket.emit("friendList", list);
+    user.friends = est;
+    await user.save();
+    uSocket.emit("pmRoom", user.notificationRoomID);
+    uSocket.emit("friendList", est);
+    if (user.messages.length) {
+      for (let j = 0; j < user.messages.length; j++) {
+        uSocket.emit("message", user.messages[j]);
+        console.log(user.messages[j]);
+      }
+    }
   });
 
-  uSocket.on("sendFriendRequest", async ugh => {
+  uSocket.on("sendFriendRequest", async invitedID => {
     let invitation = {
       username: uSocket.user.username,
       user_id: uSocket.user.id,
       responded: false,
-      inv_id: uuidv4()
+      inv_id: uuidv4(),
+      text: "sent you a friend invitation",
+      type: 0
     };
-
-    let invited = await ChatUser.findOne({ searchID: ugh.searchID });
+    console.log(invitation);
+    let invited = await ChatUser.findOne({ searchID: invitedID });
     console.log(invited.username);
     invited.invites.push(invitation);
 
@@ -157,30 +174,44 @@ utilNSP.on("connection", uSocket => {
 
   uSocket.on("confirmedRequest", async request => {
     console.log(request);
-    var userEhh = await ChatUser.findById(uSocket.user._id);
+    const userEhh = await ChatUser.findById(uSocket.user._id);
     let invit = userEhh.invites.filter(inv => inv.inv_id !== request.inv_id);
     userEhh.invites = invit;
     if (request.response === true) {
       let inviting = await ChatUser.findById(request.user_id);
-      let newFriend = {
-        id: inviting._id,
-        name: inviting.username,
-        searchID: inviting.searchID
+      let newFriend = createFriendObject(inviting);
+      let secNewFriend = createFriendObject(userEhh);
+      inviting.friends.push(secNewFriend);
+      await inviting.save();
+      let confirmation = {
+        username: uSocket.user.username,
+        text: "accepted your invitation",
+        type: 1
       };
       userEhh.friends.push(newFriend);
-      uSocket.emit("requestAnswer", true);
       uSocket.broadcast
         .to(inviting.notificationRoomID)
-        .emit("requestAnswer", true);
+        .emit("requestAnswer", confirmation);
+      uSocket.emit("friendList", userEhh.friends);
+      uSocket.broadcast
+        .to(inviting.notificationRoomID)
+        .emit("friendList", inviting.friends);
     } else {
       uSocket.emit("requestAnswer", false);
-      uSocket.user = userEhh;
     }
+    uSocket.user = userEhh;
     await userEhh.save();
   });
 
-  uSocket.on("message", mes => {
-    uSocket.emit("message", mes);
+  uSocket.on("message", async (data, id) => {
+    uSocket.emit("message", data.mes);
+    uSocket.broadcast.to(data.recipient).emit("message", data.mes);
+    let currentUsr = await ChatUser.findById(uSocket.user.id);
+    currentUsr.messages.push(data.mes);
+    await currentUsr.save();
+    let usr = await ChatUser.findById(id);
+    usr.messages.push(data.mes);
+    await usr.save();
   });
 });
 
