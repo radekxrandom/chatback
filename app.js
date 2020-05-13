@@ -146,7 +146,6 @@ utilNSP.on("connection", uSocket => {
     if (user.messages.length) {
       for (let j = 0; j < user.messages.length; j++) {
         uSocket.emit("message", user.messages[j]);
-        console.log(user.messages[j]);
       }
     }
   });
@@ -204,6 +203,7 @@ utilNSP.on("connection", uSocket => {
   });
 
   uSocket.on("message", async (data, id) => {
+    data.mes.key = uuidv4();
     uSocket.emit("message", data.mes);
     uSocket.broadcast.to(data.recipient).emit("message", data.mes);
     let currentUsr = await ChatUser.findById(uSocket.user.id);
@@ -262,7 +262,7 @@ nsp.on("connection", convSocket => {
         console.log("THERE ARE KEYS ALREADY");
       }
       conversation.connectedUsersCount++;
-      console.log(conversation.connectedUsersCount);
+      convSocket.emit("count", conversation.connectedUsersCount);
       convSocket.room = convData.url;
       convSocket.join(convData.url);
       console.log(convSocket.room);
@@ -292,7 +292,8 @@ nsp.on("connection", convSocket => {
         date: moment().format("HH:mm:ss"),
         user: userData.id,
         order: false,
-        author: "Server"
+        author: "Server",
+        key: uuidv4()
       };
 
       convSocket.emit("serverNotification", serverMsg);
@@ -308,14 +309,15 @@ nsp.on("connection", convSocket => {
     }
   });
 
-  nsp.on("disconnect", async () => {
+  convSocket.on("disconnect", async () => {
     try {
       let serverMsg = {
         type: "userDisconnected",
         date: moment().format("HH:mm:ss"),
         user: convSocket.data,
         order: false,
-        author: "Server"
+        author: "Server",
+        key: uuidv4()
       };
 
       convSocket.emit("serverNotification", serverMsg);
@@ -354,16 +356,23 @@ nsp.on("connection", convSocket => {
     }
   });
 
-  convSocket.on("message", async msg => {
+  convSocket.on("confirmReception", rec => {
+    convSocket.broadcast.to(convSocket.room).emit("confirmReception", true);
+  });
+
+  convSocket.on("message", async (msg, confirm) => {
     try {
-      console.log(msg);
       let conv = await Conversation.findById(convSocket.conversation.id);
-      console.log(conv.url);
       console.log(convSocket.room);
+      msg.key = uuidv4();
       msg.date = moment().format("HH:mm:ss");
       conv.messages.push(msg);
       await conv.save();
+      if (msg.sender === convSocket.data) {
+        confirm(convSocket.data);
+      }
       convSocket.emit("message", msg);
+
       convSocket.broadcast.to(convSocket.room).emit("message", msg);
     } catch (err) {
       let serverMsg = {
@@ -371,9 +380,11 @@ nsp.on("connection", convSocket => {
         date: moment().format("HH:mm:ss"),
         order: false,
         author: "Server",
-        text: "There was error with sending a message"
+        text: "There was error with sending a message",
+        key: uuidv4()
       };
       convSocket.emit("serverNotification", serverMsg);
+      console.log(convSocket.data);
       console.log(err);
     }
   });
@@ -417,6 +428,7 @@ io.on("connection", async socket => {
 
   socket.on("message", async msg => {
     msg.date = moment().format("DD/MM, HH:mm:ss");
+    msg.key = uuidv4();
     console.log("MESSAGE NORM");
     console.log(msg.author);
     console.log(socket.channel.id);
@@ -424,7 +436,8 @@ io.on("connection", async socket => {
       text: cryptr.encrypt(msg.text),
       author: msg.author,
       channel: socket.channel.id,
-      color: msg.color
+      color: msg.color,
+      key: msg.key
     }).save();
     socket.emit("message", msg);
     socket.broadcast.to(socket.room).emit("message", msg);
@@ -445,7 +458,8 @@ io.on("connection", async socket => {
       user: socket.name,
       order: false,
       author: "Server",
-      room: socket.room
+      room: socket.room,
+      key: uuidv4()
     };
     socket.emit("serverNotification", serverMsg);
     socket.broadcast.to(socket.room).emit("serverNotification", serverMsg);
@@ -483,7 +497,8 @@ io.on("connection", async socket => {
           user: socket.name,
           order: false,
           author: "Server",
-          room: newRoom.id
+          room: newRoom.id,
+          key: uuidv4()
         };
         socket.emit("serverNotification", serverMsg);
         socket.broadcast.to(socket.room).emit("serverNotification", serverMsg);
