@@ -4,6 +4,7 @@ var salt = bcrypt.genSaltSync(10);
 const jwt = require("jsonwebtoken");
 const validatorlog = require("./validatorlog");
 const validatorreg = require("./validatorreg");
+const { v4: uuidv4 } = require("uuid");
 
 exports.register = async (req, res, next) => {
   try {
@@ -11,19 +12,25 @@ exports.register = async (req, res, next) => {
     if (!isValid) {
       return res.status(400).json({ err: errors });
     }
+    let checkUsername = await ChatUser.find({ username: req.body.username });
+    if (checkUsername.length) {
+      return res.status(400).json({ err: "Username taken" });
+    }
 
     let hashedPass = await bcrypt.hash(req.body.password, salt);
     await new ChatUser({
       username: req.body.username,
       password: hashedPass,
       email: req.body.email,
-      globalRole: req.body.role
+      globalRole: req.body.role,
+      notificationRoomID: uuidv4(),
+      searchID: uuidv4().slice(0, 4)
     }).save();
     console.log("suc");
-    res.json("Succes");
+    res.status(201).json("Success");
   } catch (err) {
     console.log("you suck");
-    res.json({ err: "Somethings wrong" });
+    res.status(400).json({ err: "Somethings wrong" });
   }
 };
 
@@ -45,10 +52,12 @@ exports.login = async (req, res, next) => {
   }
   const payload = {
     id: us.id,
-    name: us.username
+    name: us.username,
+    searchID: us.searchID,
+    avatar: us.avatar
   };
   let token = jwt.sign({ data: payload }, "secretkey", {
     expiresIn: 31556926
   });
-  return res.json({ success: true, token: "Bearer " + token });
+  return res.status(201).json({ success: true, token: "Bearer " + token });
 };

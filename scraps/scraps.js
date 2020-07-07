@@ -148,3 +148,479 @@ const run = () => {
 };
 
 run();
+
+/* let chns = channelsData.data.channels.filter(
+  (v, i) => channelsData.data.channels.indexOf(v) === i
+);
+*/
+//let arr = channelsData.data.channels.map(val => val.name);
+
+<div className="navigation">
+  <>
+    {!this.props.auth.isAuthenticated && (
+      <div className="hello1">
+        {" "}
+        <span
+          className="clickable"
+          onClick={this.showLoginForm}
+          style={{ marginRight: "10%" }}
+        >
+          Login
+        </span>
+        <span className="clickable" onClick={this.showRegisterForm}>
+          Register
+        </span>{" "}
+      </div>
+    )}
+    {this.props.auth.isAuthenticated && (
+      <div className="hello1">
+        <span style={{ marginRight: "5%" }}>
+          Hello there {this.props.auth.user.data.name},
+        </span>
+        <span className="clickable" onClick={this.goToUserProfile}>
+          Show profile
+        </span>
+      </div>
+    )}
+  </>
+
+  if (!localStorage.getItem("privateKey")) {
+    this.props.genKeys().then(async () => {
+      /*  var publicKey = localStorage.getItem("publicKey");
+      var privateKey = localStorage.getItem("privateKey"); */
+      let publicKey = this.props.auth.keys.publicKey;
+      let privateKey = this.props.auth.keys.privateKey;
+      await this.setState({
+        publicKey,
+        privateKey
+      });
+      console.log(this.props.auth.keys);
+      console.log(this.props.auth);
+      console.log(this.props.auth.keys.publicKey);
+      socket.emit("conversationAuth", convData, user, publicKey);
+    });
+  } else {
+    console.log(this.props.auth.keys);
+    console.log(this.props.auth);
+    console.log(this.props.auth.keys.publicKey);
+    var publicKey = this.props.auth.keys.publicKey;
+    var privateKey = this.props.auth.keys.privateKey;
+    await this.setState({
+      publicKey,
+      privateKey
+    });
+
+    socket.emit("conversationAuth", convData, user, this.state.publicKey);
+  }
+
+
+  export const genKeys = () =>  dispatch => {
+    try {
+      rsa.generateKeyPairAsync().then(async keyPair => {
+        // Callback function receives new key pair as a first argument
+        let publicKey = keyPair.publicKey;
+        let privateKey = keyPair.privateKey;
+        localStorage.setItem("privateKey", privateKey);
+        localStorage.setItem("publicKey", publicKey);
+        var keys = {
+          publicKey,
+          privateKey
+        };
+
+        dispatch(setUserKeys(keys));
+      });
+    } catch (err) {
+      dispatch({
+        type: GET_ERRORS,
+        payload: err
+      });
+    }
+  };
+
+
+  import React, { useEffect, useState } from "react";
+  import SettingsIcon from "@material-ui/icons/Settings";
+  import DeleteForeverIcon from "@material-ui/icons/DeleteForever";
+  import FormControlLabel from "@material-ui/core/FormControlLabel";
+  import Switch from "@material-ui/core/Switch";
+  import Button from "@material-ui/core/Button";
+  import axios from "axios";
+
+  const RoomsTab = props => {
+    const [userChannels, setUserChannels] = useState([]);
+    /*  const [shownPanel, setShownPanel] = useState(0);
+    const [roomEdited, setRoomEdited] = useState({});
+  */
+    const [state, setState] = React.useState({
+      userChannels: [],
+      shownPanel: 0,
+      roomEdited: {},
+      listed: false,
+      name: "",
+      password: "",
+      logMessages: false
+    });
+
+    const fetchData = async () => {
+      let channels = await axios.get(
+        "http://localhost:8000/api/user/channels/list"
+      );
+      //console.log(channels.data.ownChannels);
+      //setState({...state, userChannels: channels.data.ownChannels })
+      setUserChannels(channels.data.ownChannels);
+    };
+
+    const handleChange = e => {
+      setState({ ...state, [e.target.name]: e.target.checked });
+    };
+
+    const handleInputChange = e => {
+      setState({ ...state, [e.target.name]: e.target.value });
+    };
+
+    useEffect(() => {
+      fetchData();
+    }, []);
+
+    const deleteChannel = async id => {
+      var frm = {
+        id
+      };
+      console.log(frm);
+      let post = await axios.post(
+        "http://localhost:8000/api/channel/delete",
+        frm
+      );
+      if (post) {
+        console.log("del ok");
+        await fetchData();
+        setState({ ...state, roomEdited: {}, shownPanel: 0 });
+        //setRoomEdited({});
+        //setShownPanel(0);
+        alert("Deleted ok");
+      }
+    };
+
+    const editRoom = async id => {
+      let frm = {
+        id,
+        name: state.name,
+        pwd: state.password,
+        log: state.logMessages,
+        list: state.listed
+      };
+      console.log(frm);
+    };
+
+    const changePanel = (panel, room) => {
+      setState({
+        ...state,
+        roomEdited: room,
+        shownPanel: panel,
+        name: room.name,
+        password: room.password,
+        logMessages: room.logMessages,
+        listed: room.listOnMain
+      });
+      //setShownPanel(panel);
+      //setRoomEdited(room);
+    };
+
+    const abortDelete = () => {
+      setState({ ...state, roomEdited: {}, shownPanel: 0 });
+    };
+
+    if (state.shownPanel === 0) {
+      return (
+        <div className="roomsTabContent">
+          <p>
+            List of rooms you own. Here you may change their options, change
+            permissions, or delete them.
+          </p>
+          <ul className="fields">
+            {userChannels.map(room => (
+              <li key={room._id} className="roomP">
+                <span className="roomName">{room.name}</span>
+                <DeleteForeverIcon
+                  onClick={() => changePanel(1, room)}
+                  className="deleteIcon"
+                />
+                <SettingsIcon
+                  onClick={() => changePanel(2, room)}
+                  className="settingsIcon"
+                />
+              </li>
+            ))}
+          </ul>
+        </div>
+      );
+    } else if (state.shownPanel === 1) {
+      return (
+        <div className="askDelete">
+          <p className="confirmDelete">
+            Are you sure you want to delete {state.roomEdited.name}?
+          </p>
+          <div className="delButtons">
+            <Button
+              className="userProfileButton"
+              onClick={abortDelete}
+              style={{ margin: "0.5%", background: "#4D87A6" }}
+              variant="contained"
+              color="secondary"
+            >
+              GO BACK
+            </Button>
+            <Button
+              onClick={() => deleteChannel(state.roomEdited._id)}
+              style={{ margin: "0.5%" }}
+              variant="contained"
+              color="secondary"
+            >
+              DELETE
+            </Button>
+          </div>
+        </div>
+      );
+    } else if (state.shownPanel === 2) {
+      return (
+        <div className="roomsTabContent">
+          <div className="column Uleft">
+            <p className="activeOpt opt clickable">OPTIONS</p>
+            <p
+              onClick={() => changePanel(3, state.roomEdited)}
+              className="clickable opt"
+              style={{ marginTop: "1.5rem" }}
+            >
+              USERS
+            </p>
+          </div>
+          <div className="column Uright">
+            <div className="optFields">
+              <div className="editField">
+                <span className="inpLbl">Change name</span>
+                <input
+                  name="name"
+                  onChange={handleInputChange}
+                  label={state.name}
+                  value={state.name}
+                  className="optField"
+                />
+              </div>
+              <div className="editField">
+                <span className="inpLbl">Change password</span>
+                <input
+                  onChange={handleInputChange}
+                  name="password"
+                  label="Password"
+                  type="password"
+                  className="optField"
+                />
+              </div>
+              <div className="editField">
+                <FormControlLabel
+                  control={
+                    <Switch
+                      onChange={handleChange}
+                      checked={state.listed}
+                      name="listed"
+                      color="primary"
+                    />
+                  }
+                  label="List on main page?"
+                />
+              </div>
+              <div className="editField">
+                <FormControlLabel
+                  control={
+                    <Switch
+                      onChange={handleChange}
+                      checked={state.logMessages}
+                      name="logMessages"
+                      color="primary"
+                    />
+                  }
+                  label="Save messages in db?"
+                />
+              </div>
+            </div>
+            <div className="editButtons">
+              <Button
+                className="userProfileButton"
+                onClick={abortDelete}
+                style={{ margin: "0.5%", background: "#4D87A6" }}
+                variant="contained"
+                color="secondary"
+              >
+                GO BACK
+              </Button>
+              <Button
+                onClick={() => editRoom(state.roomEdited._id)}
+                className="createRoomButton"
+                style={{ margin: "0.5%", backgroundColor: "#2FB827" }}
+                variant="contained"
+                color="secondary"
+              >
+                SAVE
+              </Button>
+            </div>
+          </div>
+        </div>
+      );
+    } else if (state.shownPanel === 3) {
+      return (
+        <div className="roomsTabContent">
+          <div className="column Uleft">
+            <p
+              onClick={() => changePanel(2, state.roomEdited)}
+              className="opt clickable"
+            >
+              OPTIONS
+            </p>
+            <p
+              className="activeOpt clickable opt"
+              style={{ marginTop: "1.5rem" }}
+            >
+              USERS
+            </p>
+          </div>
+          <div className="column Uright">
+            <div className="optFields">
+              <p className="usList">Users</p>
+              <ul>
+                <li>User 1</li>
+                <li>User 2</li>
+                <li>User 3</li>
+              </ul>
+            </div>
+            <div className="editButtons">
+              <Button
+                className="userProfileButton"
+                onClick={abortDelete}
+                style={{ margin: "0.5%", background: "#4D87A6" }}
+                variant="contained"
+                color="secondary"
+              >
+                GO BACK
+              </Button>
+              <Button
+                onClick={() => editRoom(state.roomEdited._id)}
+                className="createRoomButton"
+                style={{ margin: "0.5%", backgroundColor: "#2FB827" }}
+                variant="contained"
+                color="secondary"
+              >
+                SAVE
+              </Button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+  };
+
+  export default RoomsTab;
+
+
+  convSocket.on("delete", async (usrId, socketid, confirm) => {
+    try {
+      let ughid = socketid.slice(5);
+      let ss = socketid.slice(6);
+      let conv = await Conversation.findById(convSocket.conversation.id);
+      if (conv.owner === usrId) {
+        convSocket.in(convSocket.room).disconnect(true);
+        // await conv.remove();
+        conv.remove(async (err, ok) => {
+          let notification = {
+            type: "delete",
+            success: true
+          };
+          if (err) {
+            notification.success = false;
+            convSocket.to(ughid).emit("delete", notification);
+            utilNSP.to(ughid).emit("delete", notification);
+            confirm(notification);
+            console.log(`Error while deleting conversation ${conv.id}`);
+            return;
+          }
+          console.log(socketid);
+          io.of("/util")
+            .to(ughid)
+            .emit("delete", notification);
+          io.of("/util")
+            .to(socketid)
+            .emit("delete", notification);
+          io.of("/util")
+            .to(ss)
+            .emit("delete", notification);
+          console.log(`Conversation ${conv.id} deleted ok`);
+          console.log(notification);
+          convSocket.to(ughid).emit("delete", notification);
+          io.to(ughid).emit("delete", notification);
+          utilNSP.to(ughid).emit("delete", notification);
+          confirm(notification);
+        });
+      }
+    } catch (err) {
+      let serverMsg = {
+        type: "error",
+        date: moment().format("HH:mm:ss"),
+        order: false,
+        author: "Server",
+        text: "Unable to delete. Try again."
+      };
+      convSocket.emit("serverNotification", serverMsg);
+      console.log(err);
+    }
+  });
+  });
+
+
+  decimalBs = binary => {
+  	var result = 0;
+  	let binaryString = '' + binary;
+  	for (let i = 1; i <= binaryString.length; i++){
+  		console.log(binaryString);
+  		console.log(binaryString[binaryString.length - i]);
+  		if (binaryString[binaryString.length - i] == '1'){
+  			result = result + Math.pow(2, i-1);
+  			console.log(result);
+  	}
+  	}
+  	return result;
+  }
+
+
+  const receiveMessage = (list, person) => {
+    const filtered = list.filter(fr => fr.proxyID !== person.proxyID);
+    const changePerson = {
+      ...person,
+      seen: false,
+      lastMes: false
+    };
+    return [...filtered, changePerson];
+  }
+
+  const sendMessage = (list, person) => {
+    const filtered = list.filter(fr => fr.proxyID !== person.proxyID);
+    const changePerson = {
+      ...person,
+      seen: false,
+      lastMes: false
+    };
+    return [...filtered, changePerson];
+  }
+
+
+  const seenCb = seen => {
+      return lastMes => {
+        return (list, person) => {
+          const filtered = list.filter(fr => fr.proxyID !== person.proxyID);
+          const changePerson = {
+            ...person,
+            seen,
+            lastMes
+          };
+          return [...filtered, changePerson];
+        }
+      }
+  }

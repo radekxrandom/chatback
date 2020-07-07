@@ -1,4 +1,6 @@
-io.of("/conversation").on("connection", convSocket => {
+const nsp = io.of("/conversation");
+nsp.on("connection");
+nsp.on("connection", convSocket => {
   console.log("conv connected");
   convSocket.on("conversationAuth", async (convData, userData, key) => {
     try {

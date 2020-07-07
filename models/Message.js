@@ -24,6 +24,19 @@ var MessageSchema = new Schema({
     type: String,
     required: false
   },
+  color: {
+    type: String,
+    required: true,
+    default: "#000000"
+  },
+  key: {
+    type: String,
+    required: false
+  },
+  image: {
+    type: String,
+    required: false
+  },
   created: { type: Date, default: Date.now }
 });
 
