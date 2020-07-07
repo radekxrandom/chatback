@@ -11,8 +11,6 @@ const cryptr = new Cryptr("gsugrsogsgoisjgas123");
 var bcrypt = require("bcryptjs");
 var salt = bcrypt.genSaltSync(10);
 var moment = require("moment");
-const swStats = require("swagger-stats");
-const apiSpec = require("./swagger.json");
 
 var RSA = require("hybrid-crypto-js").RSA;
 var Crypt = require("hybrid-crypto-js").Crypt;
@@ -54,7 +52,6 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 app.use(cookieParser());
 app.use(express.static(path.join(__dirname, "public")));
-app.use(swStats.getMiddleware({ swaggerSpec: apiSpec }));
 var mongoose = require("mongoose");
 var mongo =
   "mongodb+srv://random:pies@cluster0-8quu1.mongodb.net/test?retryWrites=true&w=majority";
