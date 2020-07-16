@@ -124,3 +124,28 @@ const filterOutOld = msgs => {
   }
   return arr;
 };
+
+/*
+console.log(user.friends.length);
+if (user.friends.length) {
+  let friends = filterOutNullValues(removeDuplicates(user.friends));
+  console.log(  friends.length);
+  if (friends.length) {
+    uSocket.emit("friendList", await sanitizeFriendList(friends));
+    user.friends = friends;
+  }
+}
+
+if (user.invites.length) {
+  for (let i = 0; i < user.invites.length; i++) {
+    uSocket.emit("friendRequest", user.invites[i]);
+  }
+}
+
+if (user.messages.length) {
+  for (let cn = 0; cn < user.messages.length; cn++) {
+    uSocket.emit("message", user.messages[cn]);
+  }
+}
+
+ */

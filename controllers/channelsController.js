@@ -6,7 +6,7 @@ var bcrypt = require("bcryptjs");
 var salt = bcrypt.genSaltSync(10);
 
 const getUserDataFromJWT = async token => {
-  let decodedUserToken = await jwt.verify(token, "secretkey");
+  let decodedUserToken = await jwt.verify(token, process.env.JWT_TOKEN);
   console.log(decodedUserToken);
   if (!decodedUserToken) {
     return false;

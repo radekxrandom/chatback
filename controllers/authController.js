@@ -56,7 +56,7 @@ exports.login = async (req, res, next) => {
     searchID: us.searchID,
     avatar: us.avatar
   };
-  let token = jwt.sign({ data: payload }, "secretkey", {
+  let token = jwt.sign({ data: payload }, process.env.JWT_TOKEN, {
     expiresIn: 31556926
   });
   return res.status(201).json({ success: true, token: "Bearer " + token });

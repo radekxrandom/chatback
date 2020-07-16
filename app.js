@@ -7,23 +7,31 @@ var bodyParser = require("body-parser");
 var cors = require("cors");
 var passport = require("passport");
 const Cryptr = require("cryptr");
-const cryptr = new Cryptr("gsugrsogsgoisjgas123");
+const dotenv = require("dotenv");
+dotenv.config();
+const cryptr = new Cryptr(process.env.CRYPTSEED);
 var bcrypt = require("bcryptjs");
 var salt = bcrypt.genSaltSync(10);
 var moment = require("moment");
-
+const swStats = require("swagger-stats");
+const apiSpec = require("./swagger.json");
 var RSA = require("hybrid-crypto-js").RSA;
 var Crypt = require("hybrid-crypto-js").Crypt;
 const { v4: uuidv4 } = require("uuid");
 const jwt = require("jsonwebtoken");
-const utils = require("./utils.js");
 var app = express();
 var server = require("http").Server(app);
 var io = require("socket.io")(server);
 const supervillains = require("supervillains");
 
 var rateLimit = require("express-rate-limit");
-
+const { MessagesHelper } = require("./SocketController");
+const {
+  SocketHelper,
+  User,
+  SocialNetwork,
+  ContactsManager
+} = require("./SocketHelper");
 var limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 100 // limit each IP to 100 requests per windowMs
@@ -36,27 +44,16 @@ var authLimiter = rateLimit({
 
 // view engine setup
 app.set("views", path.join(__dirname, "views"));
-app.use(function(req, res, next) {
-  res.header("Access-Control-Allow-Origin", "*");
-  res.header("Access-Control-Allow-Credentials", true);
-  res.header("Access-Control-Allow-Methods", "GET,PUT,POST,DELETE,OPTIONS");
-  res.header(
-    "Access-Control-Allow-Headers",
-    "Origin,X-Requested-With,Content-Type,Accept,content-type,application/json"
-  );
-  res.header("Authorization", "*");
-  next();
-});
+
 app.use(logger("dev"));
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 app.use(cookieParser());
 app.use(express.static(path.join(__dirname, "public")));
+app.use(swStats.getMiddleware({ swaggerSpec: apiSpec }));
 var mongoose = require("mongoose");
-var mongo =
-  "mongodb+srv://random:pies@cluster0-8quu1.mongodb.net/test?retryWrites=true&w=majority";
 
-var mongoDB = process.env.MONGODB_URI || mongo;
+var mongoDB = process.env.MONGODB_URI || process.env.ATLASMONGO;
 
 mongoose.Promise = global.Promise;
 
@@ -90,8 +87,7 @@ const ChatUser = require("./models/ChatUser");
 const Channel = require("./models/Channel");
 const Message = require("./models/Message");
 const Invite = require("./models/Invite");
-const Conversation = require("./models/Conversation");
-const socketFunctions = require("./utils/socketFunctions");
+
 /*
 const xpkej = async () => {
   const doc = await ChatUser.find({ username: "randomis" });
@@ -130,22 +126,24 @@ const getUserDataFromJWT = async token => {
   }
   let bearer = token.split(" ");
   let ugh = bearer[1];
-  let decodedUserToken = await jwt.verify(ugh, "secretkey");
+  let decodedUserToken = await jwt.verify(ugh, process.env.JWT_TOKEN);
   console.log(decodedUserToken);
   if (!decodedUserToken) {
     return false;
   }
-  let user = await ChatUser.findById(decodedUserToken.data.id);
-  return user;
+  //let user = await ChatUser.findById(decodedUserToken.data.id);
+  return decodedUserToken.data.id;
 };
-
+console.log("PROCCESS ENV");
+console.log(process.env.TESTTEST);
+console.log(process.env.NODE_ENV);
 var users = [];
 var rooms = [];
 
 const sleep = waitTimeInMs =>
   new Promise(resolve => setTimeout(resolve, waitTimeInMs));
 
-const createFriendObject = friend => ({
+const createFriendObject = (friend, tempName = false) => ({
   id: friend._id,
   pmName: friend.notificationRoomID,
   proxyID: uuidv4(),
@@ -159,11 +157,11 @@ const sanitizeFriendList = async list => {
     let friend = await ChatUser.findById(list[i].id);
     let sanitizedFriend = {
       name: friend.username,
-      proxyID: list[i].proxyID ? list[i].proxyID : uuidv4(),
+      proxyID: list[i].proxyID,
       key: friend.publickKey,
       avatar: friend.avatar,
       delivered: friend.wereMsgsDelivered ? friend.wereMsgsDelivered : false,
-      lastMes: friend.lastMes ? friend.lastMes : true,
+      lastMes: friend.lastMes ? friend.lastMes : false,
       isOnline: friend.isOnline ? friend.isOnline : false,
       searchID: friend.searchID
     };
@@ -197,7 +195,7 @@ const generateToken = user => {
     searchID: user.searchID,
     avatar: user.avatar
   };
-  let token = jwt.sign({ data: payload }, "secretkey", {
+  let token = jwt.sign({ data: payload }, process.env.JWT_TOKEN, {
     expiresIn: 31556926
   });
   return token;
@@ -217,19 +215,18 @@ const removeDuplicates = arr => {
   return list;
 };
 
-const getUserFromInvitation = async url => {
+const getUserIDFromInvitation = async url => {
   let invite = await Invite.findOne({ url: url });
   if (!invite) {
     console.log("Invalid invitation");
     return false;
   }
-  let inviting = await ChatUser.findById(invite.owner);
   invite.remove((err, ok) => {
     if (err) {
       console.log("Error removing invitation!");
     }
   });
-  return inviting;
+  return invite.owner;
 };
 
 const msgSeenStatusFactory = value => {
@@ -255,6 +252,7 @@ const userReceiving = msgSeenStatusFactory(false);
 
 const utilNSP = io.of("/util");
 utilNSP.on("connection", uSocket => {
+  const helper = new SocketHelper(uSocket);
   uSocket.on("auth", async (authData, clb) => {
     console.log("Util socket has connected");
     console.log("Util socket token " + authData.token);
@@ -262,58 +260,37 @@ utilNSP.on("connection", uSocket => {
     var user;
     if (!authData || !authData.token) {
       //let userid = await createUser();
-      user = await createUser();
-      let token = generateToken(user);
+      user = await User.createNewAccount();
+      await user.loadUserDocument();
+      let token = generateToken(user.user);
       let tok = "Bearer " + token;
       uSocket.emit("token", tok);
     } else {
-      user = await getUserDataFromJWT(authData.token);
+      const id = await getUserDataFromJWT(authData.token);
+      user = new User(id);
+      await user.loadUserDocument();
     }
-    console.log(user.defaultSettings);
-    console.log(user.id);
+    console.log(user.user.defaultSettings);
+    console.log(user.user.id);
+    console.log(user.user.username);
+    console.log(uSocket.room);
+    helper.setUp(user.user.notificationRoomID);
     //join notification room
-    uSocket.room = user.notificationRoomID;
-    uSocket.join(user.notificationRoomID);
+    // uSocket.room = user.notificationRoomID;
+    //uSocket.join(user.notificationRoomID);
     console.log(`${uSocket.id} joined the notification room`);
-    /*
-    console.log(user.friends.length);
-    if (user.friends.length) {
-      let friends = filterOutNullValues(removeDuplicates(user.friends));
-      console.log(  friends.length);
-      if (friends.length) {
-        uSocket.emit("friendList", await sanitizeFriendList(friends));
-        user.friends = friends;
-      }
-    }
+    console.log(uSocket.room);
 
-    if (user.invites.length) {
-      for (let i = 0; i < user.invites.length; i++) {
-        uSocket.emit("friendRequest", user.invites[i]);
-      }
-    }
+    uSocket.uid = user.user.id;
+    user.updateUserField("isOnline", true);
+    user.updateUserField("wereMsgsDelivered", true);
 
-    if (user.messages.length) {
-      for (let cn = 0; cn < user.messages.length; cn++) {
-        uSocket.emit("message", user.messages[cn]);
-      }
-    }
-
-     */
-
-    uSocket.user = user;
-    uSocket.uid = user.id;
-    user.isOnline = true;
-    user.wereMsgsDelivered = true;
-
-    await user.save();
+    await user.saveUser();
     //emit to socket his name, sanitized friendlist, notifications, and messages
-    uSocket.emit("pmRoom", user.searchID);
+    uSocket.emit("pmRoom", user.user.searchID);
 
-    const ug = user.friends.map(fr => fr.pmName);
-    const data = [true, user.searchID];
-    ug.forEach(pmName => {
-      uSocket.broadcast.to(pmName).emit("onoff", data);
-    });
+    const data = [true, user.user.searchID];
+    helper.emitToEveryFriend("onoff", data, user.user.friends);
 
     clb(true);
     console.log("User succesfuly connected and authorized");
@@ -334,8 +311,7 @@ utilNSP.on("connection", uSocket => {
 
   uSocket.on("sendPublickKey", async (key, clb) => {
     console.log("PUblick key sent");
-    let user = await ChatUser.findById(uSocket.uid);
-    console.log(uSocket.uid);
+    const user = await ChatUser.findById(uSocket.uid);
     user.publickKey = key;
     await user.save();
     clb(true);
@@ -343,206 +319,197 @@ utilNSP.on("connection", uSocket => {
 
   uSocket.on("generateInvitationURL", async () => {
     console.log("INVITATION GEN");
-    console.log(uSocket.user.username);
-    let invite = await new Invite({
-      url: uuidv4(),
-      owner: uSocket.uid
-    }).save();
-    uSocket.emit("invitationURL", invite.url);
+    const url = await SocialNetwork.genInvitationURL(uSocket.uid);
+    helper.emit("invitationURL", url);
     console.log("INVITATION SENT");
+  });
+
+  uSocket.on("setTempUrlUsername", async data => {
+    const [user, invite] = await Promise.all([
+      ChatUser.findById(uSocket.uid),
+      Invite.findOne({ url: data.url })
+    ]);
+    if (!invite || invite.owner !== user.id) {
+      console.log("Invalid invitation");
+      return false;
+    }
+    invite.tempUsername = data.username;
+    await invite.save();
   });
 
   uSocket.on("acceptInvitationByURL", async (url, confirm) => {
     console.log("INVITATION ACCEPTED");
     console.log(uSocket.id);
     console.log(uSocket.uid);
-    let user = await ChatUser.findById(uSocket.uid);
-    let inviting = await getUserFromInvitation(url);
-    if (!inviting) {
+    const invitingID = await getUserIDFromInvitation(url);
+    if (!invitingID) {
+      console.log(invite);
       console.log("Invalid invitation");
+      const notif = {
+        type: "error",
+        text: "Can't add contact from URL"
+      };
+      helper.emit("newNotif", notif);
       return false;
     }
-    inviting.friends.push(createFriendObject(user));
-    user.friends.push(createFriendObject(inviting));
-    //uSocket.user = user;
+    const acceptingUser = new ContactsManager(uSocket.uid);
+    const userBeingAccepted = new ContactsManager(invitingID);
 
-    uSocket.emit("friendList", await sanitizeFriendList(user.friends));
-    uSocket.broadcast
-      .to(inviting.notificationRoomID)
-      .emit("friendList", await sanitizeFriendList(inviting.friends));
-
-    let confirmation = {
-      username: uSocket.user.username,
-      text: "accepted your invitation",
-      type: 1,
-      inv_id: uuidv4()
-    };
-    inviting.notifications.push(confirmation);
-    uSocket.broadcast
-      .to(inviting.notificationRoomID)
-      .emit("acceptedURL", confirmation);
-
+    await Promise.all([
+      acceptingUser.loadUserDocument(),
+      userBeingAccepted.loadUserDocument()
+    ]);
+    acceptingUser.addNewFriend(userBeingAccepted.user);
+    userBeingAccepted.addNewFriend(acceptingUser.user);
+    const { username, friends } = acceptingUser.user;
+    const conf = userBeingAccepted.notification(username);
+    await Promise.all([acceptingUser.saveUser(), userBeingAccepted.saveUser()]);
+    await helper.sendUpdatedFriendLists(friends, userBeingAccepted.user);
+    const { notificationRoomID } = userBeingAccepted.user;
+    helper.emitToFriend(notificationRoomID, "confirmation", conf);
     confirm(true);
-    await inviting.save();
-    await user.save();
-  });
-
-  uSocket.on("removeFriend", async proxyId => {
-    let actingUser = await ChatUser.findById(uSocket.uid);
-
-    //user being removed
-    let fromList = actingUser.friends.filter(fr => fr.proxyID === proxyId);
-    let removedUserData = Object.assign({}, ...fromList);
-    let removedUser = await ChatUser.findById(removedUserData.id);
-    let secUpdatedList = removedUser.friends.filter(
-      fr => fr.id !== uSocket.uid
-    );
-    removedUser.friends = secUpdatedList;
-    await removedUser.save();
-    uSocket.broadcast
-      .to(removedUser.notificationRoomID)
-      .emit("friendList", await sanitizeFriendList(secUpdatedList));
-
-    //acting user
-    let updatedList = actingUser.friends.filter(fr => fr.proxyID !== proxyId);
-    console.log(actingUser.friends);
-    console.log(updatedList);
-    actingUser.friends = updatedList;
-    await actingUser.save();
-    uSocket.user = actingUser;
-    uSocket.emit("friendList", await sanitizeFriendList(updatedList));
-  });
-
-  uSocket.on("sendFriendRequest", async invitedID => {
-    let invitation = {
-      username: uSocket.user.username,
-      user_id: uSocket.user.id,
-      responded: false,
-      inv_id: uuidv4(),
-      text: "sent you a friend invitation",
-      type: 0
-    };
-    console.log(invitation);
-    let invited = await ChatUser.findOne({ searchID: invitedID });
-    console.log(invited.username);
-    invited.invites.push(invitation);
-
-    uSocket.emit("confirmation", "invitation sent");
-    uSocket.broadcast
-      .to(invited.notificationRoomID)
-      .emit("friendRequest", invitation);
-    await invited.save();
   });
 
   uSocket.on("confirmedRequest", async request => {
     console.log(request);
-    const userEhh = await ChatUser.findById(uSocket.user._id);
-    let invit = userEhh.invites.filter(inv => inv.inv_id !== request.inv_id);
-    userEhh.invites = invit;
     if (request.response === true) {
-      let inviting = await ChatUser.findById(request.user_id);
-      let newFriend = createFriendObject(inviting);
-      let secNewFriend = createFriendObject(userEhh);
-      inviting.friends.push(secNewFriend);
-      let confirmation = {
-        username: userEhh.username,
-        text: "accepted your invitation",
-        type: 1,
-        inv_id: uuidv4()
-      };
-      inviting.notifications.push(confirmation);
-      await inviting.save();
-
-      userEhh.friends.push(newFriend);
-      uSocket.broadcast
-        .to(inviting.notificationRoomID)
-        .emit("confirmation", confirmation);
-      uSocket.emit("friendList", await sanitizeFriendList(userEhh.friends));
-      uSocket.broadcast
-        .to(inviting.notificationRoomID)
-        .emit("friendList", await sanitizeFriendList(inviting.friends));
+      const acceptingUser = new ContactsManager(uSocket.uid);
+      const userBeingAccepted = new ContactsManager(request.user_id);
+      await Promise.all([
+        acceptingUser.loadUserDocument(),
+        userBeingAccepted.loadUserDocument()
+      ]);
+      acceptingUser.addNewFriend(userBeingAccepted.user);
+      userBeingAccepted.addNewFriend(acceptingUser.user);
+      acceptingUser.removeFromArrayField("invites", "id", request.id);
+      const { username, friends } = acceptingUser.user;
+      const conf = userBeingAccepted.notification(username);
+      await Promise.all([
+        acceptingUser.saveUser(),
+        userBeingAccepted.saveUser()
+      ]);
+      await helper.sendUpdatedFriendLists(friends, userBeingAccepted.user);
+      const { notificationRoomID } = userBeingAccepted.user;
+      helper.emitToFriend(notificationRoomID, "confirmation", conf);
     } else {
       uSocket.emit("requestAnswer", false);
     }
-    uSocket.user = userEhh;
-    await userEhh.save();
   });
 
-  uSocket.on("seenMes", async proxyID => {
-    console.log("SEEN");
-    const usr = await ChatUser.findById(uSocket.uid);
-    const reduce = usr.friends.filter(fr => fr.proxyID === proxyID);
-    const userObject = Object.assign({}, ...reduce);
-    const secUsr = await ChatUser.findById(userObject.id);
-    const secUsrObj = secUsr.friends.filter(fr => fr.id === uSocket.uid);
-    secUsr.friends = userSeen(secUsr.friends, secUsrObj);
-    console.log(secUsr.notificationRoomID);
-    console.log(secUsrObj.proxyID);
-    uSocket.broadcast
-      .to(secUsr.notificationRoomID)
-      .emit("seen", secUsrObj.proxyID);
+  uSocket.on("removeFriend", async proxyID => {
+    //await sock.removeFriend(proxyID);
+    const user = new ContactsManager(uSocket.uid);
+    await user.loadUserDocument();
+
+    const friendID = user.getFriendID(proxyID);
+    const friend = new User(friendID);
+    await friend.loadUserDocument();
+
+    user.removeFromArrayField("friends", "id", friendID);
+    friend.removeFromArrayField("friends", "id", uSocket.uid);
+    await Promise.all([user.saveUser(), friend.saveUser()]);
+    const { friends } = user.user;
+    await helper.sendUpdatedFriendLists(friends, friend.user);
+    const notif = {
+      type: "info",
+      text: "Friend removed"
+    };
+    helper.emit("newNotif", notif);
+  });
+
+  uSocket.on("sendFriendRequest", async invitedID => {
+    //sock.sendFriendRequest(invitedID);
+    //later add array with friend search ids to uSocket
+    //update it after every event
+    //and check if friend is alreay added
+    const invitedUsr = new ContactsManager(invitedID);
+    const actingUsr = new User(uSocket.uid);
+    await Promise.all([
+      invitedUsr.findBySearchID(invitedID),
+      actingUsr.loadUserDocument()
+    ]);
+    const { username, id } = actingUsr.user;
+    const invitation = invitedUsr.generateInvitation(username, id);
+    const isFriend = actingUsr.contains("friends", "id", invitedID);
+    if (invitation === false || isFriend) {
+      const notif = {
+        type: "error",
+        text: "He's your friend already you dum dum"
+      };
+      uSocket.emit("newNotif", notif);
+      return;
+    }
+    helper.emitToFriend(
+      invitedUsr.user.notificationRoomID,
+      "friendRequest",
+      invitation
+    );
+    const notif = {
+      type: "success",
+      text: "Invitation sent"
+    };
+    helper.emit("newNotif", notif);
+    await invitedUsr.saveUser();
   });
 
   uSocket.on("usernameChanged", async data => {
-    const user = await ChatUser.findById(uSocket.uid);
-    user.friends = user.friends.map(friend => {
-      if (friend.id !== data[1]) {
-        return friend;
-      }
-      if (friend.id === data[1]) {
-        friend.name = data[0];
-        return friend;
-      }
-    });
-    await user.save();
-    uSocket.emit("friendList", await sanitizeFriendList(user.friends));
+    const user = new User(uSocket.uid);
+    await user.loadUserDocument();
+    const { name } = user.user.friends.find(el => el.searchID === data[1]);
+    user.changeFriendProperty(data[1], "name", data[0]);
+    const notif = {
+      text: `${name} changed his username to ${data[0]}`,
+      type: 2,
+      id: uuidv4()
+    };
+    user.addToArrayField("notifications", notif);
+    const alert = {
+      text: `${name} changed his username to ${data[0]}`,
+      type: "info"
+    };
+    helper.emit("newNotif", alert);
+    helper.sendUpdatedFriendLists(user.user.friends);
+    await user.saveUser();
   });
 
   uSocket.on("changeUsername", async username => {
-    console.log(uSocket.uid);
-    const user = await ChatUser.findById(uSocket.uid);
-    const ug = user.friends.map(fr => fr.pmName);
-    const data = [username, uSocket.uid];
-    ug.forEach(pmName => {
-      uSocket.broadcast.to(pmName).emit("usernameChange", data);
-    });
+    const user = new User(uSocket.uid);
+    await user.loadUserDocument();
+    const data = [username, user.user.searchID];
+    helper.emitToEveryFriend("usernameChange", data, user.user.friends);
   });
 
   uSocket.on("disconnect", async () => {
     console.log(uSocket.uid);
     console.log("User disconnetcted xpkej");
-    const user = await ChatUser.findById(uSocket.uid);
-    user.isOnline = false;
-    const ug = user.friends.map(fr => fr.pmName);
+    const user = new User(uSocket.uid);
+    await user.loadUserDocument();
+    user.updateUserField("isOnline", false);
     const data = [false, user.searchID];
-    ug.forEach(pmName => {
-      uSocket.broadcast.to(pmName).emit("onoff", data);
-    });
-    await user.save();
+    helper.emitToEveryFriend("onoff", data, user.user.friends);
+    await user.saveUser();
   });
 
   uSocket.on("newKeys", async () => {
     const user = await ChatUser.findById(uSocket.uid);
-    console.log(user);
-    const ug = user.friends.map(fr => fr.pmName);
     const data = [user.publickKey, user.searchID];
-    ug.forEach(pmName => {
-      console.log("keys sent");
-      uSocket.broadcast.to(pmName).emit("setNewKey", data);
-    });
+    helper.emitToEveryFriend("setNewKey", data, user.friends);
   });
 
   uSocket.on("removeData", async (notSure, clb) => {
     const user = await ChatUser.findById(uSocket.uid);
-    console.log(user);
-    const ug = user.friends.map(fr => fr.pmName);
     const data = user.searchID;
-    ug.forEach(pmName => {
-      uSocket.broadcast.to(pmName).emit("removeUser", data);
-    });
+    helper.emitToEveryFriend("removeUser", data, user.friends);
     await user.remove();
     clb(true);
   });
+  /*
+  uSocket.on("typing", async data => {
+    const user = await ChatUser.findById(uSocket.uid);
+    const friend = user.friends.find(el => el.proxyID === data.recipient);
+    uSocket.broadcast.to(friend.pmName).emit("showTyping", data.sender);
+    console.log(friend.id);
+  }); */
 
   uSocket.on("seenMessage", async proxyID => {
     console.log("seen msg conf");
@@ -578,263 +545,18 @@ utilNSP.on("connection", uSocket => {
     await user.save();
   });
 
-  uSocket.on("message", async (data, id) => {
-    console.log("mes sent");
-    console.log(data);
-    data.key = uuidv4();
-    data.fullDate = moment();
-    data.room = data.recipient;
-    console.log(uSocket.uid);
-    let usockUser = await ChatUser.findById(uSocket.uid);
-    let reduce = usockUser.friends.filter(fr => fr.proxyID === data.recipient);
-
-    data.startCountdown = usockUser.defaultSettings[2];
-    data.countdownTime = usockUser.defaultSettings[3];
-    console.log(reduce);
-    console.log(data.room);
-    let userObject = Object.assign({}, ...reduce);
-    usockUser.friends = userSending(usockUser.friends, userObject);
-    console.log(userObject);
-    usockUser.messages.push(data);
-    await usockUser.save();
-    let usr = await ChatUser.findById(userObject.id);
-    data.delivered = usr.isOnline;
-    uSocket.emit("message", data);
-    let friend = usr.friends.filter(
-      frd => frd.pmName === usockUser.notificationRoomID
+  uSocket.on("message", async data => {
+    const user = new User(uSocket.uid);
+    await user.loadUserDocument();
+    const MsgHelp = new MessagesHelper(
+      uSocket,
+      data,
+      user.user.friends,
+      user.user.defaultSettings[2],
+      user.user.defaultSettings[3],
+      user.user.notificationRoomID
     );
-    console.log(usr.id);
-    console.log(usockUser.id);
-    let secf = Object.assign({}, ...friend);
-    console.log(secf.proxyId);
-    data.sender = secf.proxyID;
-    data.room = secf.proxyID;
-    usr.messages.push(data);
-    usr.wereMsgsDelivered = usr.isOnline;
-    console.log(data.room);
-    usr.friends = userReceiving(usr.friends, secf);
-    uSocket.broadcast.to(usr.notificationRoomID).emit("message", data);
-    await usr.save();
-  });
-});
-
-// temporary conversations connect of /conversation namespace
-const nsp = io.of("/conversation");
-nsp.on("connection", convSocket => {
-  console.log("conv connected");
-  convSocket.on("conversationAuth", async (convData, userData, key) => {
-    try {
-      console.log(convSocket.room);
-      convSocket.leave(convSocket.room);
-      var conversation = await Conversation.findOne({
-        url: convData.url
-      });
-      if (!conversation) {
-        console.log("wrong conversation");
-        convSocket.disconnect(true);
-        return false;
-      }
-      console.log(conversation.connectedUsersCount);
-      if (userData.id !== conversation.owner) {
-        if (
-          conversation.secondUser &&
-          conversation.secondUser !== userData.id
-        ) {
-          console.log("WRONG ID");
-          convSocket.emit("wrongID", false);
-          convSocket.disconnect(true);
-          return false;
-        }
-        if (
-          conversation.secondUser &&
-          conversation.secondUser === userData.id
-        ) {
-          var secUsrId = userData.id;
-        } else {
-          secUsrId = uuidv4();
-        }
-        console.log("SEC USER");
-
-        conversation.secondUser = secUsrId;
-        userData.id = secUsrId;
-
-        convSocket.emit("secUserId", secUsrId);
-      }
-      if (conversation.publicKeys.length < 3) {
-        console.log("add key");
-        conversation.publicKeys.push(key);
-      } else {
-        console.log("THERE ARE KEYS ALREADY");
-      }
-      await conversation.connectedUsersCount++;
-      convSocket.emit("count", conversation.connectedUsersCount);
-      convSocket.room = convData.url;
-      convSocket.join(convData.url);
-      console.log(convSocket.room);
-      await conversation.save();
-      convSocket.data = userData.id;
-      convSocket.emit("currentUsrId", userData.id);
-      let allUsers = [conversation.owner, conversation.secondUser];
-      console.log(allUsers);
-      convSocket.emit("allUsers", allUsers);
-      convSocket.broadcast.to(convSocket.room).emit("allUsers", allUsers);
-
-      convSocket.emit("keys", conversation.publicKeys);
-      convSocket.broadcast
-        .to(convSocket.room)
-        .emit("keys", conversation.publicKeys);
-
-      if (conversation.messages.length > 0) {
-        console.log("mesagess send");
-        for (var ir = 0; ir < conversation.messages.length; ir++) {
-          convSocket.emit("message", conversation.messages[ir]);
-        }
-      }
-
-      //send server notification that user has connected
-      let serverMsg = {
-        type: "userJoined",
-        date: moment().format("HH:mm:ss"),
-        user: userData.id,
-        order: false,
-        author: "Server",
-        key: uuidv4()
-      };
-
-      convSocket.emit("serverNotification", serverMsg);
-      convSocket.broadcast
-        .to(convSocket.room)
-        .emit("serverNotification", serverMsg);
-
-      convSocket.conversation = conversation;
-      //console.log(convSocket);
-    } catch (err) {
-      console.log(err);
-      convSocket.emit("error", err);
-    }
-  });
-
-  convSocket.on("disconnect", async () => {
-    if (!convSocket.conversation) {
-      console.log("Conv disconnecting not conv socket");
-      return false;
-    }
-    try {
-      let serverMsg = {
-        type: "userDisconnected",
-        date: moment().format("HH:mm:ss"),
-        user: convSocket.data,
-        order: false,
-        author: "Server",
-        key: uuidv4()
-      };
-
-      convSocket.emit("serverNotification", serverMsg);
-      convSocket.broadcast
-        .to(convSocket.room)
-        .emit("serverNotification", serverMsg);
-
-      //delete conv if no users remain
-      let conv = await Conversation.findById(convSocket.conversation.id);
-      console.log(conv.connectedUsersCount);
-      conv.connectedUsersCount--;
-      console.log(conv.connectedUsersCount);
-
-      await conv.save();
-      if (conv.connectedUsersCount === 0) {
-        //wait for 15 minutes and then delete if still empty
-        sleep(1500000).then(async () => {
-          console.log("spiulki");
-          console.log(conv.url);
-          let con = await Conversation.findById(convSocket.conversation.id);
-          if (con.connectedUsersCount === 0) {
-            await con.remove();
-          }
-        });
-      }
-    } catch (err) {
-      let serverMsg = {
-        type: "error",
-        date: moment().format("HH:mm:ss"),
-        order: false,
-        author: "Server",
-        text: "There was error with disconnection"
-      };
-      convSocket.emit("serverNotification", serverMsg);
-      console.log(err);
-    }
-  });
-
-  convSocket.on("confirmReception", rec => {
-    convSocket.broadcast.to(convSocket.room).emit("confirmReception", true);
-  });
-
-  convSocket.on("message", async (msg, confirm) => {
-    try {
-      let conv = await Conversation.findById(convSocket.conversation.id);
-      console.log(convSocket.room);
-      msg.key = uuidv4();
-      msg.date = moment().format("HH:mm:ss");
-      conv.messages.push(msg);
-      await conv.save();
-      if (msg.sender === convSocket.data) {
-        confirm(convSocket.data);
-      }
-      convSocket.emit("message", msg);
-
-      convSocket.broadcast.to(convSocket.room).emit("message", msg);
-    } catch (err) {
-      let serverMsg = {
-        type: "error",
-        date: moment().format("HH:mm:ss"),
-        order: false,
-        author: "Server",
-        text: "There was error with sending a message",
-        key: uuidv4()
-      };
-      convSocket.emit("serverNotification", serverMsg);
-      console.log(convSocket.data);
-      console.log(err);
-    }
-  });
-
-  convSocket.on("colorChange", color => {
-    convSocket.broadcast.to(convSocket.room).emit("colorChange", color);
-  });
-
-  convSocket.on("delete", async (usrId, confirm) => {
-    try {
-      let conv = await Conversation.findById(convSocket.conversation.id);
-      if (conv.owner === usrId) {
-        // await conv.remove();
-        conv.remove((err, ok) => {
-          let notification = {
-            type: "delete",
-            success: true
-          };
-          if (err) {
-            notification.success = false;
-            confirm(notification);
-            console.log(`Error while deleting conversation ${conv.id}`);
-            return;
-          }
-          console.log(`Conversation ${conv.id} deleted ok`);
-          console.log(notification);
-          confirm(notification);
-          convSocket.in(convSocket.room).disconnect(true);
-        });
-      }
-    } catch (err) {
-      let serverMsg = {
-        type: "error",
-        date: moment().format("HH:mm:ss"),
-        order: false,
-        author: "Server",
-        text: "Unable to delete. Try again."
-      };
-      convSocket.emit("serverNotification", serverMsg);
-      console.log(err);
-    }
+    await MsgHelp.prepareMsgForFriend();
   });
 });
 

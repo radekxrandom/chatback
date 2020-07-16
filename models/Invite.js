@@ -10,6 +10,10 @@ var InviteSchema = new Schema({
   owner: {
     type: String,
     required: true
+  },
+  tempUsername: {
+    type: String,
+    required: false
   }
 });
 

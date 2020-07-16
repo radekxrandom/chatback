@@ -4,14 +4,14 @@ const jwt = require("jsonwebtoken");
 const moment = require("moment");
 
 const getUserDataFromJWT = async token => {
-  let decodedUserToken = await jwt.verify(token, "secretkey");
+  let decodedUserToken = await jwt.verify(token, process.env.JWT_TOKEN);
   console.log(decodedUserToken);
   if (!decodedUserToken) {
     return false;
   }
   return decodedUserToken;
 };
-
+/*
 const filtrr = (time, date) => {
   switch (time) {
   case 0:
@@ -69,20 +69,50 @@ const filtrr = (time, date) => {
   }
 };
 
+const timeEnumArr = [
+  [5, "m"],
+  [15, "m"],
+  [30, "m"],
+  [1, "h"],
+  [2, "h"],
+  [4, "h"],
+  [8, "h"],
+  [12, "h"],
+  [1, "d"],
+  [2, "d"]
+]; */
+
+const timePeriods = [5, 15, 30, 1, 2, 4, 8, 12, 1, 2];
+const periodTypes = ["m", "m", "m", "h", "h", "h", "h", "h", "d", "d"];
+
 const filterOutOld = msgs => {
   var arr = [];
   for (var i = 0; i < msgs.length; i++) {
     if (!msgs[i].fullDate || msgs[i].startCountdown === 0) {
       arr = [...arr, msgs[i]];
     } else if (msgs[i].startCountdown === 2) {
-      if (filtrr(msgs[i].countdownTime, msgs[i].fullDate)) {
+      if (
+        moment(msgs[i].fullDate).isAfter(
+          moment().subtract(
+            timePeriods[msgs[i].countdownTime],
+            periodTypes[msgs[i].countdownTime]
+          )
+        )
+      ) {
         arr = [...arr, msgs[i]];
       }
     } else if (msgs[i].startCountdown === 1) {
       if (!msgs[i].seen) {
         arr = [...arr, msgs[i]];
       } else {
-        if (filtrr(msgs[i].countdownTime, msgs[i].fullDate)) {
+        if (
+          moment(msgs[i].fullDate).isAfter(
+            moment().subtract(
+              timePeriods[msgs[i].countdownTime],
+              periodTypes[msgs[i].countdownTime]
+            )
+          )
+        ) {
           arr = [...arr, msgs[i]];
         }
       }
@@ -318,18 +348,24 @@ const sanitizeFriendList = async list => {
   let sanitizedList = [];
   for (let i = 0; i < list.length; i++) {
     let friend = await ChatUser.findById(list[i].id);
-    let sanitizedFriend = {
-      name: friend.username,
-      proxyID: list[i].proxyID,
-      key: friend.publickKey,
-      avatar: friend.avatar,
-      seen: list[i].seen,
-      delivered: friend.wereMsgsDelivered,
-      lastMes: list[i].lastMes,
-      isOnline: friend.isOnline,
-      searchID: friend.searchID
-    };
-    sanitizedList = [...sanitizedList, sanitizedFriend];
+    if (!friend) {
+      console.log("no friend found");
+      sanitizedList = [...sanitizedList];
+    } else {
+      console.log(friend.username);
+      let sanitizedFriend = {
+        name: friend.username,
+        proxyID: list[i].proxyID,
+        key: friend.publickKey,
+        avatar: friend.avatar,
+        seen: list[i].seen,
+        delivered: friend.wereMsgsDelivered,
+        lastMes: list[i].lastMes,
+        isOnline: friend.isOnline,
+        searchID: friend.searchID
+      };
+      sanitizedList = [...sanitizedList, sanitizedFriend];
+    }
   }
   return sanitizedList;
 };
@@ -401,7 +437,7 @@ exports.notifRemove = async (req, res) => {
   const userData = await getUserDataFromJWT(req.token);
   const user = await ChatUser.findById(userData.data.id);
   const newNotifs = user.notifications.filter(
-    el => el.inv_id !== req.body.inv_id
+    el => el.id !== req.body.notificationID
   );
   user.notifications = newNotifs;
   await user.save();
