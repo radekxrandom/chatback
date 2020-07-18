@@ -222,7 +222,7 @@ exports.inviteAnonymousUser = async (req, res) => {
       name: user.username,
       searchID: user.searchID
     };
-    let token = jwt.sign({ data: payload }, "secretkey", {
+    let token = jwt.sign({ data: payload }, process.env.JWT_TOKEN, {
       expiresIn: 31556926
     });
   } else {
@@ -251,7 +251,7 @@ exports.acceptInvitation = async (req, res) => {
       name: `Anon user #${user.searchID}`,
       searchID: user.searchID
     };
-    let token = jwt.sign({ data: payload }, "secretkey", {
+    let token = jwt.sign({ data: payload }, process.env.JWT_TOKEN, {
       expiresIn: 31556926
     });
   } else {
@@ -286,7 +286,7 @@ exports.uploadAvatar = async (req, res) => {
     searchID: user.searchID,
     avatar: req.body.avatarURL
   };
-  let token = jwt.sign({ data: payload }, "secretkey", {
+  let token = jwt.sign({ data: payload }, process.env.JWT_TOKEN, {
     expiresIn: 31556926
   });
   await user.save();
@@ -309,7 +309,7 @@ exports.changeUsername = async (req, res) => {
     searchID: user.searchID,
     avatar: user.avatar
   };
-  let token = jwt.sign({ data: payload }, "secretkey", {
+  let token = jwt.sign({ data: payload }, process.env.JWT_TOKEN, {
     expiresIn: 31556926
   });
   await user.save();

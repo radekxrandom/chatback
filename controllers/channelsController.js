@@ -72,7 +72,7 @@ exports.getChannelOptions = async (req, res) => {
 
 // /api/user/channels/list
 exports.listChannelsOnUserProfile = async (req, res) => {
-  let decodedUserToken = await jwt.verify(req.token, "secretkey");
+  let decodedUserToken = await jwt.verify(req.token, process.env.JWT_TOKEN);
   if (!decodedUserToken) {
     return res.status(400).json({ err: "Wrong token" });
   }
@@ -102,7 +102,7 @@ exports.listChannelsOnUserProfile = async (req, res) => {
 // /api/channel/delete
 exports.deleteChannel = async (req, res) => {
   try {
-    let decodedUserToken = await jwt.verify(req.token, "secretkey");
+    let decodedUserToken = await jwt.verify(req.token, process.env.JWT_TOKEN);
     if (!decodedUserToken) {
       return res.status(400).json({ err: "Wrong token" });
     }
@@ -125,7 +125,7 @@ exports.deleteChannel = async (req, res) => {
 
 exports.editChannelOptions = async (req, res) => {
   try {
-    let decodedUserToken = await jwt.verify(req.token, "secretkey");
+    let decodedUserToken = await jwt.verify(req.token, process.env.JWT_TOKEN);
   } catch (err) {
     console.log("wrong token" + err);
     return res.status(400).json({ err: "Wrong token" });
