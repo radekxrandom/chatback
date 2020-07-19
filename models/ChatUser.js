@@ -84,7 +84,7 @@ var ChatUserSchema = new Schema({
   ],
   defaultSettings: [
     {
-      type: Object,
+      type: Number,
       required: false
     }
   ],
@@ -92,6 +92,21 @@ var ChatUserSchema = new Schema({
     type: Boolean,
     required: true,
     default: false
+  },
+  changedUsername: {
+    type: Boolean,
+    required: true,
+    default: false
+  },
+  darkTheme: {
+    type: Boolean,
+    required: true,
+    default: false
+  },
+  language: {
+    type: String,
+    required: true,
+    default: "en"
   }
 });
 

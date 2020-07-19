@@ -422,14 +422,18 @@ exports.initialLoad = async (req, res) => {
       friendlist,
       notifs: [...user.invites, ...user.notifications],
       msgs: sorted,
-      settings: user.defaultSettings
+      settings: user.defaultSettings,
+      darkTheme: user.darkTheme || false,
+      language: user.language || "en"
     });
   }
   await user.save();
   return res.json({
     notifs: [...user.invites, ...user.notifications],
     msgs: sorted,
-    settings: [...user.defaultSettings]
+    settings: [...user.defaultSettings],
+    darkTheme: user.darkTheme || false,
+    language: user.language || "en"
   });
 };
 
