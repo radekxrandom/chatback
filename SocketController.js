@@ -125,7 +125,7 @@ class SocketUser {
         type: "error",
         text: "He's your friend already you dum dum"
       };
-      this.emit("newNotif", notif);
+      this.emit("showAlert", notif);
       return;
     }
     const invitation = invitationGenerator(this.user.username, this.user.id);
@@ -135,7 +135,7 @@ class SocketUser {
       if (invitedUser.isOnline) {
         this.emitToFriend(
           invitedUser.notificationRoomID,
-          "friendRequest",
+          "newNotification",
           invitation
         );
       }
@@ -144,7 +144,7 @@ class SocketUser {
         type: "success",
         text: "Invitation sent"
       };
-      this.emit("newNotif", notif);
+      this.emit("showAlert", notif);
     });
   }
   async createFriendship(invitingUser, requestID) {
@@ -169,7 +169,7 @@ class SocketUser {
     await invitingUser.save();
     this.emitToFriend(
       invitingUser.notificationRoomID,
-      "confirmation",
+      "newNotification",
       confirmation
     );
     this.sendUpdatedFriendLists(invitingUser);
@@ -204,7 +204,7 @@ class SocketUser {
         type: "info",
         text: "Friend removed"
       };
-      this.emit("newNotif", notif);
+      this.emit("showAlert", notif);
       return;
     }
     const removedUserNewFriendlist = friendUser.friends.filter(
@@ -221,7 +221,7 @@ class SocketUser {
       type: "info",
       text: "Friend removed"
     };
-    this.emit("newNotif", notif);
+    this.emit("showAlert", notif);
   }
 
   async changeFriendProperty(searchID, propertyName, propertyValue) {

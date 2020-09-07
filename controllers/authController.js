@@ -5,6 +5,7 @@ const jwt = require("jsonwebtoken");
 const validatorlog = require("./validatorlog");
 const validatorreg = require("./validatorreg");
 const { v4: uuidv4 } = require("uuid");
+const { encrypt, decrypt } = require("./enc2");
 
 exports.register = async (req, res, next) => {
   try {
@@ -50,6 +51,13 @@ exports.login = async (req, res, next) => {
   if (!resp) {
     return res.status(400).json({ err: "Wrong password" });
   }
+  const key = await decrypt(us.exportProfile, req.body.password);
+  const pkey = us.publickKey;
+  const akeys = {
+    key,
+    pkey
+  };
+  console.log(akeys);
   const payload = {
     id: us.id,
     name: us.username,
@@ -59,5 +67,7 @@ exports.login = async (req, res, next) => {
   let token = jwt.sign({ data: payload }, process.env.JWT_TOKEN, {
     expiresIn: 31556926
   });
-  return res.status(201).json({ success: true, token: "Bearer " + token });
+  return res
+    .status(201)
+    .json({ akeys, success: true, token: "Bearer " + token });
 };

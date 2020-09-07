@@ -33,6 +33,7 @@ module.exports = function(app, express, passport) {
       next();
     }
   };
+  router.post("/user/password/setup", checkToken, friends.setUpPassword);
   router.post("/user/settings", checkToken, friends.setUserSettings);
   router.get("/user/settings", checkToken, friends.getUserSettings);
   router.post("/username", checkToken, friends.changeUsername);

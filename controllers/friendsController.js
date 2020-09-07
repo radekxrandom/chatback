@@ -1,8 +1,12 @@
-var ChatUser = require("../models/ChatUser");
-var Invite = require("../models/Invite");
+const ChatUser = require("../models/ChatUser");
+const Invite = require("../models/Invite");
 const jwt = require("jsonwebtoken");
 const moment = require("moment");
-
+const bcrypt = require("bcryptjs");
+const salt = bcrypt.genSaltSync(10);
+const { v4: uuidv4 } = require("uuid");
+const crypto = require("crypto");
+const { encrypt, decrypt } = require("./enc2");
 const getUserDataFromJWT = async token => {
   let decodedUserToken = await jwt.verify(token, process.env.JWT_TOKEN);
   console.log(decodedUserToken);
@@ -11,76 +15,43 @@ const getUserDataFromJWT = async token => {
   }
   return decodedUserToken;
 };
-/*
-const filtrr = (time, date) => {
-  switch (time) {
-  case 0:
-    if (moment(date).isAfter(moment().subtract(5, "m"))) {
-      return true;
-    }
-    break;
-  case 1:
-    if (moment(date).isAfter(moment().subtract(15, "m"))) {
-      return true;
-    }
-    break;
-  case 2:
-    if (moment(date).isAfter(moment().subtract(30, "m"))) {
-      return true;
-    }
-    break;
-  case 3:
-    if (moment(date).isAfter(moment().subtract(1, "h"))) {
-      return true;
-    }
-    break;
-  case 4:
-    if (moment(date).isAfter(moment().subtract(2, "h"))) {
-      return true;
-    }
-    break;
-  case 5:
-    if (moment(date).isAfter(moment().subtract(4, "h"))) {
-      return true;
-    }
-    break;
-  case 6:
-    if (moment(date).isAfter(moment().subtract(8, "h"))) {
-      return true;
-    }
-    break;
-  case 7:
-    if (moment(date).isAfter(moment().subtract(12, "h"))) {
-      return true;
-    }
-    break;
-  case 8:
-    if (moment(date).isAfter(moment().subtract(1, "d"))) {
-      return true;
-    }
-    break;
-  case 9:
-    if (moment(date).isAfter(moment().subtract(2, "d"))) {
-      return true;
-    }
-    break;
-  default:
-    return false;
-  }
-};
 
-const timeEnumArr = [
-  [5, "m"],
-  [15, "m"],
-  [30, "m"],
-  [1, "h"],
-  [2, "h"],
-  [4, "h"],
-  [8, "h"],
-  [12, "h"],
-  [1, "d"],
-  [2, "d"]
-]; */
+// api/user/password/setup
+exports.setUpPassword = async (req, res) => {
+  const userData = await getUserDataFromJWT(req.token);
+  const user = await ChatUser.findById(userData.data.id);
+  if (user.password) {
+    return res
+      .status(401)
+      .json({ err: "Password already set up. Try changing it" });
+  }
+  /*
+  const cryptoSalt = crypto.randomBytes(16).toString('hex');
+  const hash = await crypto.pbkdf2(password, salt, 100000, 64, 'sha512').toString('hex');
+
+  const algorithm = 'aes-192-cbc';
+  const iv = crypto.randomBytes(16);
+  const cipher = crypto.createCipheriv(algorithm, hash, iv); */
+  const encryptedKey = await encrypt(req.body.key, req.body.password);
+  //const encryptedKey = await encrypt(req.body.password, req.body.key);
+  const hashedPass = await bcrypt.hash(req.body.password, salt);
+  user.password = hashedPass;
+  user.isAnon = false;
+  const date = moment()
+    .utcOffset(2)
+    .format("dddd, DD/MM, HH:mm:ss");
+  const notification = {
+    text: `Password added on ${date}`,
+    type: 2,
+    id: uuidv4()
+  };
+  const notifs = [...user.notifications, notification];
+  user.notifications = notifs;
+  user.exportProfile = encryptedKey;
+  await user.save();
+  const jsonNotif = JSON.stringify(notification);
+  return res.status(200).json({ mes: "Changed password", notif: jsonNotif });
+};
 
 const timePeriods = [5, 15, 30, 1, 2, 4, 8, 12, 1, 2];
 const periodTypes = ["m", "m", "m", "h", "h", "h", "h", "h", "d", "d"];
@@ -121,73 +92,6 @@ const filterOutOld = msgs => {
   return arr;
 };
 
-const createFriendObject = friend => {
-  let newFriend = {
-    id: friend._id,
-    name: friend.username,
-    searchID: friend.searchID,
-    pmName: friend.notificationRoomID,
-    proxyID: uuidv4()
-  };
-  return newFriend;
-};
-
-exports.getUserFriends = async (req, res) => {
-  try {
-    let userData = getUserDataFromJWT(req.token);
-    let owner = await ChatUser.find({ id: userData.data.id });
-    if (!owner) {
-      return res.status(400).json({ err: "Wrong token" });
-    }
-    let friends = owner.friends;
-    return res.status(200).json({ friends });
-  } catch (err) {
-    console.log(err);
-    return res.status(400).json({ err });
-  }
-};
-
-exports.sendFriendRequest = async (req, res) => {
-  try {
-    let userData = getUserDataFromJWT(req.token);
-    let owner = await ChatUser.find({ id: userData.data.id });
-    if (!owner) {
-      return res.status(400).json({ err: "Wrong token" });
-    }
-    let invitedUser = await ChatUser.find({ id: req.body.userId });
-    if (!invitedUser) {
-      return res.status(400).json({ err: "No user with given id" });
-    }
-    let invite = {
-      username: owner.username,
-      id: owner.id,
-      responded: false
-    };
-    invitedUser.invites.push(invite);
-    await invitedUser.save();
-    return res.status(200).json({ mes: "Ok" });
-  } catch (err) {
-    console.log(err);
-    return res.status(400).json({ err });
-  }
-};
-
-//make safer in the future
-exports.findAll = async (req, res) => {
-  try {
-    let userData = getUserDataFromJWT(req.token);
-    let owner = await ChatUser.find({ id: userData.data.id });
-    if (!owner) {
-      return res.status(400).json({ err: "Wrong token" });
-    }
-    let users = await ChatUser.find();
-    return res.status(200).json({ users });
-  } catch (err) {
-    console.log(err);
-    return res.status(400).json({ err });
-  }
-};
-
 exports.findUsername = async (req, res) => {
   try {
     let userData = getUserDataFromJWT(req.token);
@@ -205,69 +109,6 @@ exports.findUsername = async (req, res) => {
     console.log(err);
     return res.status(400).json({ err });
   }
-};
-
-exports.inviteAnonymousUser = async (req, res) => {
-  let userData = getUserDataFromJWT(req.token);
-  if (!userData) {
-    let srch = uuidv4().slice(0, 4);
-    let user = await new ChatUser({
-      notificationRoomID: uuidv4(),
-      searchID: srch,
-      isAnon: true,
-      username: `Anon #${srch}`
-    }).save();
-    const payload = {
-      id: user.id,
-      name: user.username,
-      searchID: user.searchID
-    };
-    let token = jwt.sign({ data: payload }, process.env.JWT_TOKEN, {
-      expiresIn: 31556926
-    });
-  } else {
-    user = await ChatUser.find({ id: userData.data.id });
-  }
-  let invite = await new Invite({
-    url: uuidv4(),
-    owner: user.id
-  }).save();
-  if (token) {
-    return res.status(200).json({ url: invite.url, token: "Bearer " + token });
-  }
-  return res.status(200).json({ url: invite.url });
-};
-
-exports.acceptInvitation = async (req, res) => {
-  let userData = getUserDataFromJWT(req.token);
-  if (!userData) {
-    let user = await new ChatUser({
-      notificationRoomID: uuidv4(),
-      searchID: uuidv4().slice(0, 4),
-      isAnon: true
-    }).save();
-    const payload = {
-      id: user.id,
-      name: `Anon user #${user.searchID}`,
-      searchID: user.searchID
-    };
-    let token = jwt.sign({ data: payload }, process.env.JWT_TOKEN, {
-      expiresIn: 31556926
-    });
-  } else {
-    user = await ChatUser.find({ id: userData.data.id });
-  }
-
-  let invite = await Invite.findOne({ url: req.body.url });
-  let inviting = await ChatUser.findById(invite.owner);
-  let invitedFriend = createFriendObject(user);
-  inviting.friends.push(inivitedFriend);
-  let invitingFriend = createFriendObject(inviting);
-  user.friends.push(invitingFriend);
-  await inviting.save();
-  await user.save();
-  //to do
-  //send updated list by socketio
 };
 
 exports.uploadAvatar = async (req, res) => {
@@ -330,20 +171,6 @@ const removeDuplicates = arr => {
   return list;
 };
 
-const removeOldUsers = async arr => {
-  var newArr = [];
-  for (let i = 0; i < arr.length; i++) {
-    const friend = await ChatUser.findById(arr[i].id);
-    if (!friend) {
-      newArr = [...newArr];
-    } else if (friend) {
-      console.log(`${i} get ${friend.username}`);
-      newArr = [...newArr, arr[i]];
-    }
-  }
-  return newArr;
-};
-
 const sanitizeFriendList = async list => {
   let sanitizedList = [];
   for (let i = 0; i < list.length; i++) {
@@ -352,7 +179,6 @@ const sanitizeFriendList = async list => {
       console.log("no friend found");
       sanitizedList = [...sanitizedList];
     } else {
-      console.log(friend.username);
       let sanitizedFriend = {
         name: friend.username,
         proxyID: list[i].proxyID,
@@ -405,16 +231,15 @@ exports.initialLoad = async (req, res) => {
   const sorted = await filterOutOld(pach);
   user.messages = sorted;
   user.isOnline = true;
+  if (!user.password && !user.isAnon) {
+    user.isAnon = true;
+  }
   if (!user.defaultSettings || user.defaultSettings.length < 2) {
     user.defaultSettings = generateDefSettings();
   }
   console.log(user.defaultSettings);
   if (user.friends.length) {
-    const uga = filterOutNullValues(removeDuplicates(user.friends));
-    /*  removeOldUsers(friends).then(newk => {
-      console.log(newk);
-    }); */
-    const friends = await removeOldUsers(uga);
+    const friends = filterOutNullValues(removeDuplicates(user.friends));
     const friendlist = await sanitizeFriendList(friends);
     user.friends = friends;
     await user.save();
@@ -424,7 +249,8 @@ exports.initialLoad = async (req, res) => {
       msgs: sorted,
       settings: user.defaultSettings,
       darkTheme: user.darkTheme || false,
-      language: user.language || "en"
+      language: user.language || "en",
+      hasPassword: !!user.password
     });
   }
   await user.save();
@@ -433,7 +259,8 @@ exports.initialLoad = async (req, res) => {
     msgs: sorted,
     settings: [...user.defaultSettings],
     darkTheme: user.darkTheme || false,
-    language: user.language || "en"
+    language: user.language || "en",
+    hasPassword: !!user.password
   });
 };
 

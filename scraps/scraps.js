@@ -250,7 +250,7 @@ run();
     const [userChannels, setUserChannels] = useState([]);
     /*  const [shownPanel, setShownPanel] = useState(0);
     const [roomEdited, setRoomEdited] = useState({});
-  */
+    */
     const [state, setState] = React.useState({
       userChannels: [],
       shownPanel: 0,
@@ -544,14 +544,14 @@ run();
           }
           console.log(socketid);
           io.of("/util")
-            .to(ughid)
-            .emit("delete", notification);
+          .to(ughid)
+          .emit("delete", notification);
           io.of("/util")
-            .to(socketid)
-            .emit("delete", notification);
+          .to(socketid)
+          .emit("delete", notification);
           io.of("/util")
-            .to(ss)
-            .emit("delete", notification);
+          .to(ss)
+          .emit("delete", notification);
           console.log(`Conversation ${conv.id} deleted ok`);
           console.log(notification);
           convSocket.to(ughid).emit("delete", notification);
@@ -584,7 +584,7 @@ run();
   		if (binaryString[binaryString.length - i] == '1'){
   			result = result + Math.pow(2, i-1);
   			console.log(result);
-  	}
+      }
   	}
   	return result;
   }
@@ -611,16 +611,120 @@ run();
   }
 
 
-  const seenCb = seen => {
-      return lastMes => {
-        return (list, person) => {
-          const filtered = list.filter(fr => fr.proxyID !== person.proxyID);
-          const changePerson = {
+  const msgSeenStatusFactory = seen => {
+    return lastMes => {
+      return (list, person) => {
+        const filtered = list.filter(fr => fr.proxyID !== person.proxyID);
+        const changePerson = {
             ...person,
             seen,
             lastMes
-          };
+        };
           return [...filtered, changePerson];
-        }
       }
+    }
   }
+
+  const userSending = msgSeenStatusFactory(false)(false);
+
+
+  @-webkit-keyframes bounce-out-top{0%{-webkit-transform:translateY(0);transform:translateY(0);-webkit-animation-timing-function:ease-out;animation-timing-function:ease-out}5%{-webkit-transform:translateY(-30px);transform:translateY(-30px);-webkit-animation-timing-function:ease-in;animation-timing-function:ease-in}15%{-webkit-transform:translateY(0);transform:translateY(0);-webkit-animation-timing-function:ease-out;animation-timing-function:ease-out}25%{-webkit-transform:translateY(-38px);transform:translateY(-38px);-webkit-animation-timing-function:ease-in;animation-timing-function:ease-in}38%{-webkit-transform:translateY(0);transform:translateY(0);-webkit-animation-timing-function:ease-out;animation-timing-function:ease-out}52%{-webkit-transform:translateY(-75px);transform:translateY(-75px);-webkit-animation-timing-function:ease-in;animation-timing-function:ease-in}70%{-webkit-transform:translateY(0);transform:translateY(0);-webkit-animation-timing-function:ease-out;animation-timing-function:ease-out}85%{opacity:1}100%{-webkit-transform:translateY(-800px);transform:translateY(-800px);opacity:0}}@keyframes bounce-out-top{0%{-webkit-transform:translateY(0);transform:translateY(0);-webkit-animation-timing-function:ease-out;animation-timing-function:ease-out}5%{-webkit-transform:translateY(-30px);transform:translateY(-30px);-webkit-animation-timing-function:ease-in;animation-timing-function:ease-in}15%{-webkit-transform:translateY(0);transform:translateY(0);-webkit-animation-timing-function:ease-out;animation-timing-function:ease-out}25%{-webkit-transform:translateY(-38px);transform:translateY(-38px);-webkit-animation-timing-function:ease-in;animation-timing-function:ease-in}38%{-webkit-transform:translateY(0);transform:translateY(0);-webkit-animation-timing-function:ease-out;animation-timing-function:ease-out}52%{-webkit-transform:translateY(-75px);transform:translateY(-75px);-webkit-animation-timing-function:ease-in;animation-timing-function:ease-in}70%{-webkit-transform:translateY(0);transform:translateY(0);-webkit-animation-timing-function:ease-out;animation-timing-function:ease-out}85%{opacity:1}100%{-webkit-transform:translateY(-800px);transform:translateY(-800px);opacity:0}} .bounce-out-top{-webkit-animation:bounce-out-top 3s both;animation:bounce-out-top 3s both} @-webkit-keyframes bounce-in-top{0%{-webkit-transform:translateY(-500px);transform:translateY(-500px);-webkit-animation-timing-function:ease-in;animation-timing-function:ease-in;opacity:0}38%{-webkit-transform:translateY(0);transform:translateY(0);-webkit-animation-timing-function:ease-out;animation-timing-function:ease-out;opacity:1}55%{-webkit-transform:translateY(-65px);transform:translateY(-65px);-webkit-animation-timing-function:ease-in;animation-timing-function:ease-in}72%{-webkit-transform:translateY(0);transform:translateY(0);-webkit-animation-timing-function:ease-out;animation-timing-function:ease-out}81%{-webkit-transform:translateY(-28px);transform:translateY(-28px);-webkit-animation-timing-function:ease-in;animation-timing-function:ease-in}90%{-webkit-transform:translateY(0);transform:translateY(0);-webkit-animation-timing-function:ease-out;animation-timing-function:ease-out}95%{-webkit-transform:translateY(-8px);transform:translateY(-8px);-webkit-animation-timing-function:ease-in;animation-timing-function:ease-in}100%{-webkit-transform:translateY(0);transform:translateY(0);-webkit-animation-timing-function:ease-out;animation-timing-function:ease-out}}@keyframes bounce-in-top{0%{-webkit-transform:translateY(-500px);transform:translateY(-500px);-webkit-animation-timing-function:ease-in;animation-timing-function:ease-in;opacity:0}38%{-webkit-transform:translateY(0);transform:translateY(0);-webkit-animation-timing-function:ease-out;animation-timing-function:ease-out;opacity:1}55%{-webkit-transform:translateY(-65px);transform:translateY(-65px);-webkit-animation-timing-function:ease-in;animation-timing-function:ease-in}72%{-webkit-transform:translateY(0);transform:translateY(0);-webkit-animation-timing-function:ease-out;animation-timing-function:ease-out}81%{-webkit-transform:translateY(-28px);transform:translateY(-28px);-webkit-animation-timing-function:ease-in;animation-timing-function:ease-in}90%{-webkit-transform:translateY(0);transform:translateY(0);-webkit-animation-timing-function:ease-out;animation-timing-function:ease-out}95%{-webkit-transform:translateY(-8px);transform:translateY(-8px);-webkit-animation-timing-function:ease-in;animation-timing-function:ease-in}100%{-webkit-transform:translateY(0);transform:translateY(0);-webkit-animation-timing-function:ease-out;animation-timing-function:ease-out}} .bounce-in-top{-webkit-animation:bounce-in-top 1.5s both;animation:bounce-in-top 1.5s both}
+    const generateButton = (id, text, classNames) => {
+      const btn = document.createElement("button");
+      btn.id = id;
+      btn.innerHTML = text;
+
+      const classes = classNames.split(" ");
+      classes.map(el => btn.classList.add(el));
+      return btn;
+    }
+
+    const insertAfter = (nodeID, element) => {
+      const node = document.getElementById(nodeID);
+      node.after(element);
+    }
+
+    if(!document.getElementById("bonba")){
+      const przycisk = generateButton("bonba", "atomuwka", "btn btn-sm btn-default");
+      insertAfter("freeBeer", przycisk);
+    }
+
+    document.getElementById('bonba').onclick = () => {
+      const vid = document.getElementById("videowrap");
+      vid.classList.add("bounce-out-top");
+      setTimeout(() => {
+        vid.classList.remove("bounce-out-top");
+        vid.classList.add("bounce-in-top");
+        setTimeout(() => vid.classList.remove("bounce-in-top"), 1500);
+      }, 6000);
+    };
+
+
+
+    class SocialNetwork extends SocketHelper {
+      constructor(socket) {
+        super(socket);
+      }
+      static async genInvitationURL(id) {
+        console.log(id);
+        const invite = await new Invite({
+          url: uuidv4(),
+          owner: id
+        }).save();
+        return invite.url;
+        //super.emit("invitationURL", invite.url);
+      }
+      generateFriendRequest(sendingUser, invitedUserID) {
+        if (sendingUser.friends.find(el => el.searchID === invitedUserID)) {
+          const notif = {
+            type: "error",
+            text: "He's your friend already you dum dum"
+          };
+          super.emit("newNotif", notif);
+          return;
+        }
+        return invitationGenerator(sendingUser, sendingUser);
+      }
+      sendFriendRequest(isOnline, notifRoom, invitation) {
+        if (isOnline) {
+          super.emitToFriend(notifRoom, "friendRequest", invitation);
+        }
+        const notif = {
+          type: "success",
+          text: "Invitation sent"
+        };
+        super.emit("newNotif", notif);
+      }
+      genNewFriendList(addedUser, friendList) {
+        console.log(addedUser.username);
+        console.log(friendList.length);
+        if (friendList.find(el => el.id === addedUser.id)) {
+          return [...friendList];
+        }
+        const newFriend = createFriendObject(addedUser);
+        const newList = [...friendList, newFriend];
+        return newList;
+      }
+      removeInvitation(invitations, invID) {
+        const updated = invitations.filter(el => el.id !== invID);
+        return updated;
+      }
+      sendAndUpdateNotifs(username, pmName, notifs) {
+        const confirmation = {
+          username: username,
+          text: "accepted your invitation",
+          type: 1,
+          id: uuidv4()
+        };
+        super.emitToFriend(pmName, "confirmation", confirmation);
+        const newNotifs = [...notifs, confirmation];
+        return newNotifs;
+      }
+
+      async getBothUsers(currUsrID, friendID) {
+        [this.user, this.friend] = await Promise.all([
+          ChatUser.findById(currUsrID),
+          ChatUser.findById(friendID)
+        ]);
+      }
+    }

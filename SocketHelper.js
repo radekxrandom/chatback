@@ -32,6 +32,58 @@ const sanitizeFriendList = async list => {
   let sanitizedList = [];
   for (let i = 0; i < list.length; i++) {
     let friend = await ChatUser.findById(list[i].id);
+    if (!friend) {
+      console.log("no friend found");
+      sanitizedList = [...sanitizedList];
+    } else {
+      let sanitizedFriend = {
+        name: friend.username,
+        proxyID: list[i].proxyID,
+        key: friend.publickKey,
+        avatar: friend.avatar,
+        seen: list[i].seen,
+        delivered: friend.wereMsgsDelivered,
+        lastMes: list[i].lastMes,
+        isOnline: friend.isOnline,
+        searchID: friend.searchID
+      };
+      sanitizedList = [...sanitizedList, sanitizedFriend];
+    }
+  }
+  return sanitizedList;
+};
+
+/*
+const sanitizeFriendList = async listFr => {
+  let sanitizedList = [];
+  const list = [...listFr];
+  const friendss = list.map(el => ChatUser.findById(el.id));
+  console.log(friendss);
+  Promise.allSettled(friendss).then(friends => {
+    console.log(friends);
+    const sanitizedFriends = friends.map((el, i) => {
+      const frnd = {
+        name:
+          list[i].tempName && list[i].tempName !== 1
+            ? list[i].tempName
+            : el.username,
+        proxyID: list[i].proxyID,
+        key: el.publickKey,
+        avatar: el.avatar,
+        delivered: el.wereMsgsDelivered ? el.wereMsgsDelivered : false,
+        lastMes: el.lastMes ? el.lastMes : true,
+        isOnline: el.isOnline ? el.isOnline : false,
+        searchID: el.searchID
+      };
+      return frnd;
+    });
+    console.log(sanitizedFriends);
+    return sanitizedFriends;
+  });
+};
+
+  for (let i = 0; i < list.length; i++) {
+    let friend = await ChatUser.findById(list[i].id);
     let sanitizedFriend = {
       name:
         list[i].tempName && list[i].tempName !== 1
@@ -48,7 +100,8 @@ const sanitizeFriendList = async list => {
     sanitizedList = [...sanitizedList, sanitizedFriend];
   }
   return sanitizedList;
-};
+  };
+  */
 
 class SocketHelper {
   constructor(socket) {
@@ -61,7 +114,7 @@ class SocketHelper {
   emit(eventName, data) {
     this.socket.emit(eventName, data);
   }
-  emitToFriend(friendRoom, eventName, data) {
+  emitToFriend(eventName, friendRoom, data) {
     this.socket.broadcast.to(friendRoom).emit(eventName, data);
   }
   emitToEveryFriend(eventName, data, friends) {
@@ -71,13 +124,25 @@ class SocketHelper {
     });
   }
   async sendUpdatedFriendLists(friendList, friend = false) {
-    this.emit("friendList", await sanitizeFriendList(friendList));
-    if (friend) {
-      this.emitToFriend(
-        friend.notificationRoomID,
-        "friendList",
-        await sanitizeFriendList(friend.friends)
-      );
+    try {
+      this.emit("friendList", await sanitizeFriendList(friendList));
+      if (friend) {
+        this.emitToFriend(
+          "friendList",
+          friend.notificationRoomID,
+
+          await sanitizeFriendList(friend.friends)
+        );
+      }
+    } catch (err) {
+      console.log(err.name);
+      console.log(err.message);
+      console.log(err.stack);
+      const notif = {
+        type: "error",
+        text: "Uknown error"
+      };
+      this.emit("showAlert", notif);
     }
   }
 }
@@ -95,7 +160,6 @@ class User {
       username: supervillains.random(),
       defaultSettings: [2, 2, 1, 0]
     }).save();
-    this.user = user;
     return new this(user.id);
   }
   async loadUserDocument() {
@@ -119,10 +183,7 @@ class User {
     this.user[field] = arr.filter(el => el[idName] !== elID);
   }
   contains(field, idName, elID) {
-    if (this.user[field].find(el => el[idName] === elID)) {
-      return true;
-    }
-    return false;
+    return this.user[field].find(el => el[idName] === elID);
   }
   async saveUser() {
     await this.user.save();
@@ -136,11 +197,159 @@ class User {
     );
     this.updateUserField("friends", updatedFriendList);
   }
+  updateMsgsDeliveredStatus(name) {
+    const updated = this.user.messages.map(msg =>
+      msg.author !== name ? msg : { ...msg, delivered: true }
+    );
+    this.user.messages = updated;
+  }
+}
+
+class FriendsFacade extends SocketHelper {
+  constructor(socket, actingUsrID) {
+    super(socket);
+    this.user = new ContactsManager(actingUsrID);
+  }
+  _updateContactLists() {
+    this.user.addNewFriend(this.friend.user);
+    this.friend.addNewFriend(this.user.user);
+  }
+  async _createFriendship(friendsID) {
+    this.friend = new ContactsManager(friendsID);
+    await Promise.all([
+      this.user.loadUserDocument(),
+      this.friend.loadUserDocument()
+    ]);
+    this._updateContactLists();
+  }
+  async _saveBoth() {
+    await Promise.all([this.user.saveUser(), this.friend.saveUser()]);
+  }
+  async _manageFriendshipCreation(friendsID) {
+    await this._createFriendship(friendsID);
+    const conf = this.friend.invAcceptedNotification(this.user.user.username);
+    super.emitToFriend(
+      "newNotification",
+      this.friend.user.notificationRoomID,
+
+      conf
+    );
+    await super.sendUpdatedFriendLists(
+      this.user.user.friends,
+      this.friend.user
+    );
+  }
+  async respondToFriendRequest(request) {
+    if (request.response !== true) {
+      super.emit("requestAnswer", false);
+      await this.user.loadUserDocument();
+      this.user.removeFromArrayField("invites", "id", request.id);
+      await this.user.saveUser();
+      return false;
+    }
+    await this._manageFriendshipCreation(request.user_id);
+    this.user.removeFromArrayField("invites", "id", request.id);
+    await this._saveBoth();
+  }
+  async _extractThenDestroyInvitation(url) {
+    let invite = await Invite.findOne({ url: url });
+    if (invite) {
+      const owner = invite.owner;
+      invite.remove((err, ok) => {
+        if (err) {
+          console.log("Error removing invitation!");
+        }
+      });
+      return owner;
+    }
+    return false;
+  }
+  async createFriendshipFromURL(url) {
+    const invite = await this._extractThenDestroyInvitation(url);
+    console.log(invite);
+    if (!invite) {
+      console.log(invite);
+      console.log("Invalid invitation");
+      const notif = {
+        type: "error",
+        text: "Can't add contact from URL"
+      };
+      super.emit("showAlert", notif);
+      return false;
+    }
+    await this._manageFriendshipCreation(invite);
+    await this._saveBoth();
+  }
+  _removeBothFromContacts() {
+    this.user.removeFromArrayField("friends", "id", this.friend.user.id);
+    this.friend.removeFromArrayField("friends", "id", this.user.user.id);
+  }
+  async removeFriendship(proxyID) {
+    await this.user.loadUserDocument();
+    const friendID = this.user.getFriendID(proxyID);
+    this.friend = new ContactsManager(friendID);
+    await this.friend.loadUserDocument();
+    this._removeBothFromContacts();
+    await this._saveBoth();
+    await super.sendUpdatedFriendLists(
+      this.user.user.friends,
+      this.friend.user
+    );
+    const notif = {
+      type: "info",
+      text: "Friend removed"
+    };
+    super.emit("showAlert", notif);
+  }
+  async sendFriendRequest(invitedID) {
+    this.friend = new ContactsManager(invitedID);
+    await Promise.all([
+      this.friend.findBySearchID(invitedID),
+      this.user.loadUserDocument()
+    ]);
+    const { username, id } = this.user.user;
+    const invitation = this.friend.generateInvitation(username, id);
+    const isFriend = this.user.contains("friends", "id", invitedID);
+    if (invitation === false || isFriend) {
+      const notif = {
+        type: "error",
+        text: "He's your friend already you dum dum"
+      };
+      super.emit("showAlert", notif);
+      return;
+    }
+    super.emitToFriend(
+      "newNotification",
+      this.friend.user.notificationRoomID,
+
+      invitation
+    );
+    const notif = {
+      type: "success",
+      text: "Invitation sent"
+    };
+    super.emit("showAlert", notif);
+    await this.friend.saveUser();
+  }
 }
 
 class ContactsManager extends User {
   constructor(id) {
     super(id);
+  }
+  async changeMsgsStatus(id, otherUsername) {
+    const friend = new User(id);
+    await friend.loadUserDocument();
+    friend.updateMsgsDeliveredStatus(otherUsername);
+    await friend.saveUser();
+  }
+  async changeFriendMsgs() {
+    const friendsIDs = this.user.friends.map(el => el.id);
+    await Promise.allSettled(
+      friendsIDs.map(
+        async el => await this.changeMsgsStatus(el, this.user.username)
+      )
+    );
   }
   async findBySearchID(searchID) {
     const user = await ChatUser.findOne({ searchID });
@@ -153,7 +362,6 @@ class ContactsManager extends User {
     return friend.id;
   }
   static async genInvitationURL(id) {
-    console.log(id);
     const invite = await new Invite({
       url: uuidv4(),
       owner: id
@@ -169,12 +377,14 @@ class ContactsManager extends User {
     return invitation;
   }
   addNewFriend(friend) {
+    console.log(friend.username);
+    console.log(friend.id);
     if (super.contains("friends", "id", friend.id)) {
       throw "already friends";
     }
     super.addToArrayField("friends", createFriendObject(friend));
   }
-  notification(username) {
+  invAcceptedNotification(username) {
     const confirmation = {
       username: username,
       text: "accepted your invitation",
@@ -186,77 +396,9 @@ class ContactsManager extends User {
   }
 }
 
-class SocialNetwork extends SocketHelper {
-  constructor(socket) {
-    super(socket);
-  }
-  static async genInvitationURL(id) {
-    console.log(id);
-    const invite = await new Invite({
-      url: uuidv4(),
-      owner: id
-    }).save();
-    return invite.url;
-    //super.emit("invitationURL", invite.url);
-  }
-  generateFriendRequest(sendingUser, invitedUserID) {
-    if (sendingUser.friends.find(el => el.searchID === invitedUserID)) {
-      const notif = {
-        type: "error",
-        text: "He's your friend already you dum dum"
-      };
-      super.emit("newNotif", notif);
-      return;
-    }
-    return invitationGenerator(sendingUser, sendingUser);
-  }
-  sendFriendRequest(isOnline, notifRoom, invitation) {
-    if (isOnline) {
-      super.emitToFriend(notifRoom, "friendRequest", invitation);
-    }
-    const notif = {
-      type: "success",
-      text: "Invitation sent"
-    };
-    super.emit("newNotif", notif);
-  }
-  genNewFriendList(addedUser, friendList) {
-    console.log(addedUser.username);
-    console.log(friendList.length);
-    if (friendList.find(el => el.id === addedUser.id)) {
-      return [...friendList];
-    }
-    const newFriend = createFriendObject(addedUser);
-    const newList = [...friendList, newFriend];
-    return newList;
-  }
-  removeInvitation(invitations, invID) {
-    const updated = invitations.filter(el => el.id !== invID);
-    return updated;
-  }
-  sendAndUpdateNotifs(username, pmName, notifs) {
-    const confirmation = {
-      username: username,
-      text: "accepted your invitation",
-      type: 1,
-      id: uuidv4()
-    };
-    super.emitToFriend(pmName, "confirmation", confirmation);
-    const newNotifs = [...notifs, confirmation];
-    return newNotifs;
-  }
-
-  async getBothUsers(currUsrID, friendID) {
-    [this.user, this.friend] = await Promise.all([
-      ChatUser.findById(currUsrID),
-      ChatUser.findById(friendID)
-    ]);
-  }
-}
-
 module.exports = {
   SocketHelper,
   User,
-  SocialNetwork,
-  ContactsManager
+  ContactsManager,
+  FriendsFacade
 };

@@ -30,11 +30,22 @@ class ContactsClass extends SocketUser {
     this.user = user;
   }
   async generateInvitationURL() {
-    const invite = await new Invite({
-      url: uuidv4(),
-      owner: this.user.id
-    }).save();
-    super.emit("invitationURL", invite.url);
+    try {
+      const invite = await new Invite({
+        url: uuidv4(),
+        owner: this.user.id
+      }).save();
+      super.emit("invitationURL", invite.url);
+    } catch (err) {
+      console.log(err.name);
+      console.log(err.message);
+      console.log(err.stack);
+      const notif = {
+        type: "error",
+        text: "Uknown error"
+      };
+      super.emit("newNotif", notif);
+    }
   }
   sendFriendRequest(invitedUserID) {
     if (this.user.friends.find(el => el.searchID === invitedUserID)) {
@@ -71,25 +82,39 @@ class ContactsClass extends SocketUser {
     const userUpdatedFriends = [...this.user.friends, invitingFriend];
     const updatedInvites = this.user.invites.filter(el => el.id !== requestID);
     invitingUser.friends = invitingUpdatedFriends;
-    await super.updateUserField("invites", updatedInvites);
-    //this.user.invites = updatedInvites;
-    // this.user.friends = userUpdatedFriends;
-    await super.updateUserField("friends", userUpdatedFriends);
+    try {
+      await super.updateUserField("invites", updatedInvites);
+      //this.user.invites = updatedInvites;
+      // this.user.friends = userUpdatedFriends;
+      await super.updateUserField("friends", userUpdatedFriends);
 
-    const confirmation = {
-      username: this.user.username,
-      text: "accepted your invitation",
-      type: 1,
-      id: uuidv4()
-    };
-    invitingUser.notifications = [...invitingUser.notifications, confirmation];
-    await invitingUser.save();
-    super.emitToFriend(
-      invitingUser.notificationRoomID,
-      "confirmation",
-      confirmation
-    );
-    super.sendUpdatedFriendLists(invitingUser);
+      const confirmation = {
+        username: this.user.username,
+        text: "accepted your invitation",
+        type: 1,
+        id: uuidv4()
+      };
+      invitingUser.notifications = [
+        ...invitingUser.notifications,
+        confirmation
+      ];
+      await invitingUser.save();
+      super.emitToFriend(
+        invitingUser.notificationRoomID,
+        "confirmation",
+        confirmation
+      );
+      super.sendUpdatedFriendLists(invitingUser);
+    } catch (err) {
+      console.log(err.name);
+      console.log(err.message);
+      console.log(err.stack);
+      const notif = {
+        type: "error",
+        text: "Uknown error"
+      };
+      super.emit("newNotif", notif);
+    }
   }
 
   async removeFriend(proxyID) {
@@ -103,42 +128,53 @@ class ContactsClass extends SocketUser {
     const updatedUserMessages = this.user.messages.filter(
       el => el.room !== proxyID
     );
-    await super.updateUserField("messages", updatedUserMessages);
-    await super.updateUserField("friends", updatedUserFriendList);
+    try {
+      await super.updateUserField("messages", updatedUserMessages);
+      await super.updateUserField("friends", updatedUserFriendList);
 
-    const friendUser = await ChatUser.findById(friend.id);
-    console.log(friendUser.username);
-    const userFriendObject = friendUser.friends.find(
-      el => el.id == this.user.id
-    );
-    console.log("me as a friend usr obj");
-    console.log(userFriendObject);
-    console.log(friendUser.friends);
-    if (!userFriendObject) {
-      console.log("no me as a friend");
-      await super.sendUpdatedFriendLists();
+      const friendUser = await ChatUser.findById(friend.id);
+      console.log(friendUser.username);
+      const userFriendObject = friendUser.friends.find(
+        el => el.id == this.user.id
+      );
+      console.log("me as a friend usr obj");
+      console.log(userFriendObject);
+      console.log(friendUser.friends);
+      if (!userFriendObject) {
+        console.log("no me as a friend");
+        await super.sendUpdatedFriendLists();
+        const notif = {
+          type: "info",
+          text: "Friend removed"
+        };
+        super.emit("newNotif", notif);
+        return;
+      }
+      const removedUserNewFriendlist = friendUser.friends.filter(
+        el => el.proxyID !== userFriendObject.proxyID
+      );
+      const removedFriendMessages = friendUser.messages.filter(
+        el => el.room !== userFriendObject.proxyID
+      );
+      friendUser.messages = removedFriendMessages;
+      friendUser.friends = removedUserNewFriendlist;
+      await friendUser.save();
+      await super.sendUpdatedFriendLists(friendUser);
       const notif = {
         type: "info",
         text: "Friend removed"
       };
       super.emit("newNotif", notif);
-      return;
+    } catch (err) {
+      console.log(err.name);
+      console.log(err.message);
+      console.log(err.stack);
+      const notif = {
+        type: "error",
+        text: "Uknown error"
+      };
+      super.emit("newNotif", notif);
     }
-    const removedUserNewFriendlist = friendUser.friends.filter(
-      el => el.proxyID !== userFriendObject.proxyID
-    );
-    const removedFriendMessages = friendUser.messages.filter(
-      el => el.room !== userFriendObject.proxyID
-    );
-    friendUser.messages = removedFriendMessages;
-    friendUser.friends = removedUserNewFriendlist;
-    await friendUser.save();
-    await super.sendUpdatedFriendLists(friendUser);
-    const notif = {
-      type: "info",
-      text: "Friend removed"
-    };
-    super.emit("newNotif", notif);
   }
 }
 

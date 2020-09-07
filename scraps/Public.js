@@ -213,3 +213,23 @@ class Public extends Component {
 }
 
 export default Public;
+
+uSocket.on("usernameChanged", async data => {
+  const user = new User(uSocket.uid);
+  await user.loadUserDocument();
+  const { name } = user.user.friends.find(el => el.searchID === data[1]);
+  user.changeFriendProperty(data[1], "name", data[0]);
+  const notif = {
+    text: `${name} changed his username to ${data[0]}`,
+    type: 2,
+    id: uuidv4()
+  };
+  user.addToArrayField("notifications", notif);
+  const alert = {
+    text: `${name} changed his username to ${data[0]}`,
+    type: "info"
+  };
+  helper.emit("showAlert", alert);
+  helper.sendUpdatedFriendLists(user.user.friends);
+  await user.saveUser();
+});

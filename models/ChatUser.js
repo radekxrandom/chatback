@@ -31,6 +31,12 @@ var ChatUserSchema = new Schema({
     type: String,
     required: false
   },
+  otherPubKeys: [
+    {
+      type: String,
+      required: false
+    }
+  ],
   invites: [
     {
       type: Object,
@@ -70,7 +76,7 @@ var ChatUserSchema = new Schema({
   isAnon: {
     type: Boolean,
     required: true,
-    default: false
+    default: true
   },
   isOnline: {
     type: Boolean,
@@ -107,6 +113,15 @@ var ChatUserSchema = new Schema({
     type: String,
     required: true,
     default: "en"
+  },
+  deviceCount: {
+    type: Number,
+    required: true,
+    default: 0
+  },
+  exportProfile: {
+    type: String,
+    required: false
   }
 });
 
