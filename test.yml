@@ -1,0 +1,18 @@
+config:
+  target: "http://localhost:8000/"
+  phases:
+    - duration: 10
+      arrivalRate: 1
+scenarios:
+  - engine: "socketio"
+    flow:
+      - get:
+          url: "/api/channels/list"
+      - emit:
+          channel: "auth"
+          data: "false"
+          namespace: "/util"
+      - think: 1
+      - emit:
+          channel: "removeData"
+          data: "do not care about the response"
