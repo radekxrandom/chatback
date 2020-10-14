@@ -5,7 +5,6 @@ const Invite = require("./models/Invite");
 const { v4: uuidv4 } = require("uuid");
 const moment = require("moment");
 const supervillains = require("supervillains");
-
 const invitationGenerator = (username, id) => {
   const invitation = {
     username: username,
@@ -231,7 +230,6 @@ class FriendsFacade extends SocketHelper {
     super.emitToFriend(
       "newNotification",
       this.friend.user.notificationRoomID,
-
       conf
     );
     await super.sendUpdatedFriendLists(

@@ -337,7 +337,7 @@ utilNSP.on("connection", uSocket => {
     const data = [user.user.searchID, { isOnline: true, delivered: true }];
     helper.emitToEveryFriend("updateFriend", data, user.user.friends);
 
-    clb(true);
+    clb('auth');
     console.log("User succesfuly connected and authorized");
   });
 
@@ -378,7 +378,7 @@ utilNSP.on("connection", uSocket => {
     const user = await ChatUser.findById(uSocket.uid);
     user.publickKey = key;
     await user.save();
-    clb(true);
+    clb('key');
   });
 
   uSocket.on("generateInvitationURL", async () => {
@@ -398,7 +398,7 @@ utilNSP.on("connection", uSocket => {
     console.log(uSocket.uid);
     const contactsCreator = new FriendsFacade(uSocket, uSocket.uid);
     await contactsCreator.createFriendshipFromURL(url);
-    confirm(true);
+    confirm('accept');
   });
 
   uSocket.on("confirmedRequest", async request => {

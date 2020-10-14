@@ -5,6 +5,7 @@
   "scripts": {
     "start": "node ./bin/www",
     "devstart": "nodemon ./bin/www",
+    "serverstart": "SET DEBUG=back:* & yarn run devstart",
     "test": "nyc mocha"
   },
   "dependencies": {
